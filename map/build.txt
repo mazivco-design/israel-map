@@ -1,0 +1,2 @@
+maxzoom=13 bytes=32915039 built=2026-10-14
+glyph files 512
