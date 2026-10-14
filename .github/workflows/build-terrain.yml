@@ -1,0 +1,45 @@
+name: Build terrain tiles
+
+# Builds terrain/{z}/{x}/{y}.webp from the Copernicus GLO-30 DEM and commits them.
+# Runs when the build script changes, or by hand from the Actions tab.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - tools/build_terrain.py
+      - .github/workflows/build-terrain.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-terrain
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install rasterio==1.4.3 mercantile==1.2.1 numpy pillow
+      - name: Build tiles
+        run: |
+          rm -rf terrain
+          python tools/build_terrain.py --out terrain --maxzoom 12
+          du -sh terrain
+          find terrain -name '*.webp' | wc -l
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add terrain
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "Build terrain tiles from Copernicus GLO-30"
+          git pull --rebase origin main
+          git push origin HEAD:main
