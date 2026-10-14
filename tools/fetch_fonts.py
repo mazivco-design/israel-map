@@ -1,38 +1,25 @@
-"""Copy the map label fonts (glyph PBFs) used by the site into fonts/, so local mode needs no font server.
-Source: OpenFreeMap's font set (OpenMapTiles fonts, Noto Sans, OFL licensed)."""
-import os, sys, time, urllib.error, urllib.parse, urllib.request
+"""Copy the map label fonts (glyph PBFs) into fonts/, so local mode needs no font server.
+Source: the OpenMapTiles font release (Noto Sans, SIL Open Font License), one zip download."""
+import io, os, sys, urllib.request, zipfile
 
+URL = "https://github.com/openmaptiles/fonts/releases/download/v2.0/v2.0.zip"
 STACKS = ["Noto Sans Regular", "Noto Sans Bold"]
-SRC = "https://tiles.openfreemap.org/fonts/{stack}/{start}-{end}.pbf"
 
 def main(out="fonts"):
-    n = missing = failed = 0
-    for stack in STACKS:
-        d = os.path.join(out, stack)
-        os.makedirs(d, exist_ok=True)
-        for start in range(0, 65536, 256):
-            end = start + 255
-            url = SRC.format(stack=urllib.parse.quote(stack), start=start, end=end)
-            data = b""   # an empty glyph file is valid: MapLibre treats the range as having no characters
-            for attempt in range(4):
-                try:
-                    data = urllib.request.urlopen(url, timeout=30).read()
-                    break
-                except urllib.error.HTTPError as e:
-                    if e.code == 404:
-                        missing += 1
-                        break
-                    time.sleep(2 + attempt * 3)
-                except Exception:
-                    time.sleep(2 + attempt * 3)
-            else:
-                failed += 1
-            with open(os.path.join(d, f"{start}-{end}.pbf"), "wb") as f:
-                f.write(data)
+    data = urllib.request.urlopen(URL, timeout=120).read()
+    z = zipfile.ZipFile(io.BytesIO(data))
+    n = 0
+    for name in z.namelist():
+        parts = name.strip("/").split("/")
+        if len(parts) >= 2 and parts[-2] in STACKS and parts[-1].endswith(".pbf"):
+            d = os.path.join(out, parts[-2])
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, parts[-1]), "wb") as f:
+                f.write(z.read(name))
             n += 1
-    print("glyph ranges", n, "missing", missing, "failed", failed)
-    if failed > 20:
-        sys.exit("too many failed downloads")
+    print("glyph files", n)
+    if n < 2 * 256:
+        sys.exit("font set incomplete")
 
 if __name__ == "__main__":
     main(*sys.argv[1:])
