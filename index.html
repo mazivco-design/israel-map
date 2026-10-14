@@ -137,8 +137,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 const $=id=>document.getElementById(id);
 if(!window.maplibregl){document.body.insertAdjacentHTML('beforeend','<p style="position:fixed;inset:0;display:grid;place-items:center;color:#9db0a8">לא הצלחתי לטעון את ספריית המפה. בדקו את החיבור לאינטרנט ורעננו.</p>');return;}
 
-const TERRARIUM='https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
-const ATTR='© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · © OpenMapTiles · <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> · Terrain: Mapzen / AWS Open Data';
+// elevation tiles live in this repo (terrain/), built from Copernicus GLO-30 by tools/build_terrain.py
+const BASE=location.href.replace(/[?#].*$/,'').replace(/[^/]*$/,'');
+const TERRARIUM=BASE+'terrain/{z}/{x}/{y}.webp';
+const DEM_BOUNDS=[34.0,29.3,36.2,33.6], DEM_MAXZOOM=12;
+const ATTR='© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · © OpenMapTiles · <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> · גובה: Copernicus DEM GLO-30 © DLR e.V., © Airbus Defence and Space GmbH, provided under COPERNICUS by the EU and ESA';
 const FONT=['Noto Sans Regular'], FONTB=['Noto Sans Bold'];
 const NAME=['coalesce',['get','name:he'],['get','name']];
 
@@ -161,8 +164,8 @@ const style={
   glyphs:'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
   sources:{
     omt:{type:'vector',url:'https://tiles.openfreemap.org/planet',attribution:ATTR},
-    dem:{type:'raster-dem',tiles:[TERRARIUM],encoding:'terrarium',tileSize:256,maxzoom:15},
-    demShade:{type:'raster-dem',tiles:[TERRARIUM],encoding:'terrarium',tileSize:256,maxzoom:15},
+    dem:{type:'raster-dem',tiles:[TERRARIUM],encoding:'terrarium',tileSize:256,maxzoom:DEM_MAXZOOM,bounds:DEM_BOUNDS},
+    demShade:{type:'raster-dem',tiles:[TERRARIUM],encoding:'terrarium',tileSize:256,maxzoom:DEM_MAXZOOM,bounds:DEM_BOUNDS},
     regions:{type:'geojson',data:EMPTY},
     regionLabels:{type:'geojson',data:EMPTY},
     found:{type:'geojson',data:{type:'FeatureCollection',features:[]}}
@@ -236,6 +239,8 @@ const LABEL_LAYERS=['water-name','peaks','places-minor','places-town','places-ci
 
 const map=new maplibregl.Map({container:'map',style,...HOME,maxPitch:80,attributionControl:false});
 map.addControl(new maplibregl.AttributionControl({compact:true}),'bottom-left');
+// start with the credits folded into the (i) button
+map.once('load',()=>{const c=map.getContainer().querySelector('.maplibregl-ctrl-attrib');if(c)c.classList.remove('maplibregl-compact-show');});
 
 /* ---------- controls ---------- */
 let mode='hyp';
@@ -354,7 +359,7 @@ const tileCache=new Map();
 function tilePixels(z,x,y){
   const key=`${z}/${x}/${y}`;
   if(!tileCache.has(key)){
-    tileCache.set(key,fetch(TERRARIUM.replace('{z}',z).replace('{x}',x).replace('{y}',y),{mode:'cors'})
+    tileCache.set(key,fetch(TERRARIUM.replace('{z}',z).replace('{x}',x).replace('{y}',y))
       .then(r=>{if(!r.ok)throw new Error(r.status);return r.blob();})
       .then(b=>createImageBitmap(b))
       .then(img=>{const c=document.createElement('canvas');c.width=c.height=256;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);return g.getImageData(0,0,256,256).data;})
@@ -363,7 +368,8 @@ function tilePixels(z,x,y){
   return tileCache.get(key);
 }
 async function elevationAt(lng,lat){
-  const z=14,n=2**z,r=Math.PI/180;
+  if(lng<DEM_BOUNDS[0]||lng>DEM_BOUNDS[2]||lat<DEM_BOUNDS[1]||lat>DEM_BOUNDS[3])throw new Error('outside');
+  const z=DEM_MAXZOOM,n=2**z,r=Math.PI/180;
   const fx=(lng+180)/360*n*256-.5;
   const fy=(1-Math.log(Math.tan(lat*r)+1/Math.cos(lat*r))/Math.PI)/2*n*256-.5;
   const x0=Math.floor(fx),y0=Math.floor(fy),tx=fx-x0,ty=fy-y0;
@@ -394,7 +400,7 @@ function render(){
   if(!P){$('last').textContent='—';$('lastco').textContent='געו במפה כדי לסמן נקודה';$('lastnote').textContent='';return;}
   $('last').textContent=hText(P);
   $('lastco').textContent=`${P.lat.toFixed(5)}°N  ${P.lng.toFixed(5)}°E`;
-  $('lastnote').textContent=P.err?'לא הצלחתי לקרוא את הגובה. בדקו את החיבור לאינטרנט.':P.z==null?'קורא גובה…':'מאריחי הגובה (מבוסס SRTM, דיוק טיפוסי 5–15 מ׳)';
+  $('lastnote').textContent=P.err==='outside'?'הנקודה מחוץ לאזור שיש עליו נתוני גובה.':P.err?'לא הצלחתי לקרוא את הגובה. בדקו את החיבור לאינטרנט.':P.z==null?'קורא גובה…':'מנתוני Copernicus (רשת של כ־30 מ׳, דיוק טיפוסי של כמה מטרים)';
 }
 function addPin(lngLat){
   const el=document.createElement('div');el.className='pin';
@@ -402,7 +408,7 @@ function addPin(lngLat){
   const marker=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(lngLat).addTo(map);
   const P={lng:lngLat.lng,lat:lngLat.lat,z:null,marker,label,err:false};
   pins.push(P);render();
-  elevationAt(P.lng,P.lat).then(z=>{P.z=z;render();}).catch(()=>{P.err=true;render();});
+  elevationAt(P.lng,P.lat).then(z=>{P.z=z;render();}).catch(e=>{P.err=e&&e.message==='outside'?'outside':true;render();});
 }
 function removePin(i){pins.splice(i,1)[0].marker.remove();render();}
 $('b-clear').onclick=()=>{while(pins.length)removePin(pins.length-1);};
