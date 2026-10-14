@@ -6,7 +6,7 @@
 <title>תבליט ישראל</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Secular+One&family=Assistant:wght@400;600;700&display=swap">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.9.0/dist/maplibre-gl.css">
+<link rel="stylesheet" href="lib/maplibre-gl.css">
 <style>
 /* Layout: full-bleed map; title block top-right; survey point log top-left; instrument bar bottom */
 :root{
@@ -131,7 +131,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
+<script src="lib/maplibre-gl.js"></script>
 <script>
 (function(){
 const $=id=>document.getElementById(id);
@@ -146,7 +146,8 @@ const NAME=['coalesce',['get','name:he'],['get','name']];
 const STOPS=[[-430,'#5c8054'],[-200,'#76965c'],[0,'#588a5c'],[150,'#8caa68'],[400,'#cdc482'],[700,'#c6a066'],[1000,'#aa764e'],[1400,'#8c6048'],[1900,'#a08c80'],[2400,'#cdc6c0'],[2800,'#f8f7f4']];
 $('ramp').style.background='linear-gradient(to right,'+STOPS.map(([z,c])=>`${c} ${((z+430)/3230*100).toFixed(1)}%`).join(',')+')';
 
-maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js',true).catch(()=>{});
+// libraries are kept in lib/ (MapLibre GL 5.9.0, mapbox-gl-rtl-text 0.3.0) so the site does not depend on a CDN
+maplibregl.setRTLTextPlugin(new URL('lib/mapbox-gl-rtl-text.js',location.href).href,true).catch(()=>{});
 
 const small=innerWidth<600;
 const HOME={center:[35.05,31.45],zoom:small?6.4:7.0,pitch:55,bearing:-15};
