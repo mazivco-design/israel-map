@@ -1,0 +1,3 @@
+pmtiles 4.4.1 (lib/pmtiles.js)
+https://github.com/protomaps/PMTiles
+License: BSD-3-Clause, Copyright (c) Protomaps LLC

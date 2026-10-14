@@ -65,10 +65,20 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #results .rn{font-weight:700;font-size:.88rem}
 #results .rd{color:var(--muted);font-size:.74rem;line-height:1.3}
 #smsg{color:var(--muted);font-size:.78rem;margin:6px 0 0}
-#region{font:inherit;font-size:.86rem;color:var(--fg);background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:999px;padding:4px 10px;max-width:46vw}
-#regioninfo{color:var(--muted);font-size:.8rem;font-variant-numeric:tabular-nums}
-#regionctl{flex:1 1 100%}
-#b-route{margin-top:6px}
+#addsel{font:inherit;font-size:.86rem;color:var(--fg);background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:999px;padding:4px 10px;max-width:46vw}
+#selinfo{color:var(--muted);font-size:.8rem;font-variant-numeric:tabular-nums}
+#selctl{flex:1 1 100%}
+#chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{display:inline-flex;align-items:center;gap:2px;background:rgba(243,196,90,.18);border:1px solid #f3c45a;color:var(--fg);border-radius:999px;padding:1px 4px 1px 9px;font-size:.8rem}
+.chip button{border:none;padding:0 5px;font-size:.95rem;line-height:1;color:var(--muted)}
+#found{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:6px}
+#foundchips{display:contents}
+.fchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:999px;padding:1px 4px 1px 8px;font-size:.78rem;max-width:100%}
+.fchip i{width:10px;height:10px;border-radius:50%;flex:none}
+.fchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:9em}
+.fchip button{border:none;padding:0 5px;font-size:.95rem;line-height:1;color:var(--muted)}
+#results button.on{background:rgba(255,138,61,.16)}
+#results button.on .rn::after{content:" ✓";color:#ff8a3d}
 @media (max-width:560px){#title h1{font-size:1.15rem}#title p{display:none}#title{max-width:calc(55vw - 18px)}input[type=range]{width:90px}#panel{gap:8px 10px;padding:8px 10px}#log{max-height:36%}}
 </style>
 </head>
@@ -85,7 +95,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     </form>
     <p id="smsg" hidden></p>
     <ul id="results" hidden></ul>
-    <button id="b-route" hidden>הסרת הסימון מהמפה</button>
+    <div id="found" hidden>
+      <span id="foundchips"></span>
+      <button id="b-route">ניקוי הסימונים</button>
+    </div>
   </div>
 </div>
 
@@ -104,6 +117,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 
 <div id="panel" class="card">
   <div class="ctl">
+    <span class="seg" role="group" aria-label="מקור נתונים">
+      <button id="m-local" aria-pressed="true" title="הכל מהאתר עצמו, אזור ישראל בלבד">מקומי</button>
+      <button id="m-global" aria-pressed="false" title="מפה ונתוני גובה משירותים חיצוניים, לכל העולם">עולמי</button>
+    </span>
     <span class="seg" role="group" aria-label="צביעה">
       <button id="c-hyp" aria-pressed="true">לפי גובה</button>
       <button id="c-uni" aria-pressed="false">אפור</button>
@@ -118,12 +135,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <button id="b-lbl" aria-pressed="true">שמות</button>
     <button id="b-trails" aria-pressed="false">שבילים</button>
     <button id="b-regions" aria-pressed="false">אזורים</button>
+    <button id="b-countries" aria-pressed="false">מדינות</button>
     <button id="b-reset">איפוס מבט</button>
   </div>
-  <div class="ctl" id="regionctl" hidden>
-    <label for="region">אזור</label>
-    <select id="region"><option value="">בחירת אזור…</option></select>
-    <span id="regioninfo"></span>
+  <div class="ctl" id="selctl" hidden>
+    <select id="addsel" aria-label="הוספה לבחירה"><option value="">הוספה לבחירה…</option></select>
+    <span id="chips"></span>
+    <span id="selinfo"></span>
+    <button id="b-selclear" hidden>ניקוי בחירה</button>
   </div>
   <div id="legend">
     <div id="ramp"></div>
@@ -132,16 +151,29 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 </div>
 
 <script src="lib/maplibre-gl.js"></script>
+<script src="lib/pmtiles.js"></script>
 <script>
 (function(){
 const $=id=>document.getElementById(id);
 if(!window.maplibregl){document.body.insertAdjacentHTML('beforeend','<p style="position:fixed;inset:0;display:grid;place-items:center;color:#9db0a8">לא הצלחתי לטעון את ספריית המפה. בדקו את החיבור לאינטרנט ורעננו.</p>');return;}
 
-// elevation tiles live in this repo (terrain/), built from Copernicus GLO-30 by tools/build_terrain.py
 const BASE=location.href.replace(/[?#].*$/,'').replace(/[^/]*$/,'');
-const TERRARIUM=BASE+'terrain/{z}/{x}/{y}.webp';
-const DEM_BOUNDS=[34.0,29.3,36.2,33.6], DEM_MAXZOOM=12;
-const ATTR='© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · © OpenMapTiles · <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> · גובה: Copernicus DEM GLO-30 © DLR e.V., © Airbus Defence and Space GmbH, provided under COPERNICUS by the EU and ESA';
+const CREDIT_OSM='© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · © OpenMapTiles';
+const CREDIT_COP='גובה: Copernicus DEM GLO-30 © DLR e.V., © Airbus Defence and Space GmbH, provided under COPERNICUS by the EU and ESA';
+/* Two data modes. "local": everything is served from this site (map tiles built by .github/workflows/build-map.yml,
+   elevation by build-terrain.yml), covering the Israel area. "global": OpenFreeMap + AWS Terrarium, the whole world. */
+const LOCAL_BOUNDS=[34.0,29.3,36.2,33.6];
+const SRC={
+  local:{vector:{type:'vector',url:'pmtiles://'+BASE+'map/israel.pmtiles',attribution:CREDIT_OSM+' · '+CREDIT_COP},
+    glyphs:BASE+'fonts/{fontstack}/{range}.pbf',
+    dem:BASE+'terrain/{z}/{x}/{y}.webp',demMax:12,bounds:LOCAL_BOUNDS,
+    note:'מנתוני Copernicus (רשת של כ־30 מ׳, דיוק טיפוסי של כמה מטרים)'},
+  global:{vector:{type:'vector',url:'https://tiles.openfreemap.org/planet',attribution:CREDIT_OSM+' · <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> · Terrain: Mapzen / AWS Open Data'},
+    glyphs:'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+    dem:'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',demMax:15,elevZ:14,bounds:null,
+    note:'מאריחי Terrarium (מבוסס SRTM, דיוק טיפוסי 5–15 מ׳)'}
+};
+if(window.pmtiles){const p=new pmtiles.Protocol();maplibregl.addProtocol('pmtiles',p.tile);}
 const FONT=['Noto Sans Regular'], FONTB=['Noto Sans Bold'];
 const NAME=['coalesce',['get','name:he'],['get','name']];
 
@@ -149,150 +181,212 @@ const NAME=['coalesce',['get','name:he'],['get','name']];
 const STOPS=[[-430,'#5c8054'],[-200,'#76965c'],[0,'#588a5c'],[150,'#8caa68'],[400,'#cdc482'],[700,'#c6a066'],[1000,'#aa764e'],[1400,'#8c6048'],[1900,'#a08c80'],[2400,'#cdc6c0'],[2800,'#f8f7f4']];
 $('ramp').style.background='linear-gradient(to right,'+STOPS.map(([z,c])=>`${c} ${((z+430)/3230*100).toFixed(1)}%`).join(',')+')';
 
-// libraries are kept in lib/ (MapLibre GL 5.9.0, mapbox-gl-rtl-text 0.3.0) so the site does not depend on a CDN
+// libraries are kept in lib/ (MapLibre GL 5.9.0, mapbox-gl-rtl-text 0.3.0, PMTiles 4.4.1) so the site does not depend on a CDN
 maplibregl.setRTLTextPlugin(new URL('lib/mapbox-gl-rtl-text.js',location.href).href,true).catch(()=>{});
 
 const small=innerWidth<600;
 const HOME={center:[35.05,31.45],zoom:small?6.4:7.0,pitch:55,bearing:-15};
-
-
 const EMPTY={type:'FeatureCollection',features:[]};
-const SEL_NONE='__none__';
+const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
-const style={
-  version:8,
-  glyphs:'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
-  sources:{
-    omt:{type:'vector',url:'https://tiles.openfreemap.org/planet',attribution:ATTR},
-    dem:{type:'raster-dem',tiles:[TERRARIUM],encoding:'terrarium',tileSize:256,maxzoom:DEM_MAXZOOM,bounds:DEM_BOUNDS},
-    demShade:{type:'raster-dem',tiles:[TERRARIUM],encoding:'terrarium',tileSize:256,maxzoom:DEM_MAXZOOM,bounds:DEM_BOUNDS},
-    regions:{type:'geojson',data:EMPTY},
-    regionLabels:{type:'geojson',data:EMPTY},
-    found:{type:'geojson',data:{type:'FeatureCollection',features:[]}}
-  },
-  sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
-  terrain:{source:'dem',exaggeration:2},
-  layers:[
-    {id:'bg',type:'background',paint:{'background-color':'#4a4d4f'}},
-    {id:'relief',type:'color-relief',source:'demShade',paint:{'color-relief-opacity':1,
-      'color-relief-color':['interpolate',['linear'],['elevation'],...STOPS.flat()]}},
-    {id:'shade',type:'hillshade',source:'demShade',paint:{
-      'hillshade-method':'multidirectional',
-      'hillshade-highlight-color':['rgba(255,255,255,0.32)','rgba(255,250,240,0.18)','rgba(255,255,255,0.12)','rgba(255,255,255,0.12)'],
-      'hillshade-shadow-color':['rgba(0,0,0,0.55)','rgba(0,0,0,0.35)','rgba(0,0,0,0.25)','rgba(0,0,0,0.25)'],
-      'hillshade-illumination-direction':[315,270,0,45],
-      'hillshade-illumination-altitude':[35,40,40,45]}},
-    {id:'water',type:'fill','source':'omt','source-layer':'water',paint:{'fill-color':'#2e5c7c'}},
-    {id:'river',type:'line',source:'omt','source-layer':'waterway',minzoom:9,filter:['in',['get','class'],['literal',['river','stream']]],
-      paint:{'line-color':'#4f8fb3','line-width':['interpolate',['linear'],['zoom'],9,.4,14,1.6],'line-opacity':.7}},
-    {id:'border',type:'line',source:'omt','source-layer':'boundary',filter:['==',['get','admin_level'],2],
-      paint:{'line-color':'#e8efe9','line-opacity':.35,'line-width':1,'line-dasharray':[3,2]}},
-    {id:'region-dim',type:'fill',source:'regions',filter:['!=',['get','id'],SEL_NONE],layout:{visibility:'none'},
-      paint:{'fill-color':'#05080a','fill-opacity':0}},
-    {id:'region-sel',type:'fill',source:'regions',filter:['==',['get','id'],SEL_NONE],layout:{visibility:'none'},
-      paint:{'fill-color':'#f3c45a','fill-opacity':.32}},
-    {id:'region-lines',type:'line',source:'regions',layout:{visibility:'none','line-join':'round'},
-      paint:{'line-color':'#f3d48a','line-opacity':.75,'line-width':['interpolate',['linear'],['zoom'],6,.8,11,2],'line-dasharray':[4,2]}},
-    {id:'region-sel-line',type:'line',source:'regions',filter:['==',['get','id'],SEL_NONE],layout:{visibility:'none','line-join':'round'},
-      paint:{'line-color':'#ffd166','line-width':['interpolate',['linear'],['zoom'],6,2.5,11,4.5]}},
-    {id:'roads-major',type:'line',source:'omt','source-layer':'transportation',minzoom:8,
-      filter:['in',['get','class'],['literal',['motorway','trunk','primary']]],
-      paint:{'line-color':'#f2e6c9','line-opacity':['interpolate',['linear'],['zoom'],8,.18,12,.45],'line-width':['interpolate',['linear'],['zoom'],8,.5,14,2.5]}},
-    {id:'roads-minor',type:'line',source:'omt','source-layer':'transportation',minzoom:11,
-      filter:['in',['get','class'],['literal',['secondary','tertiary','minor']]],
-      paint:{'line-color':'#f2e6c9','line-opacity':.28,'line-width':['interpolate',['linear'],['zoom'],11,.3,15,1.4]}},
-    {id:'trails-paths',type:'line',source:'omt','source-layer':'transportation',minzoom:10,
-      filter:['in',['get','class'],['literal',['path','track']]],layout:{visibility:'none','line-join':'round'},
-      paint:{'line-color':['match',['get','class'],'track','#e8d6a8','#ffd27a'],'line-opacity':.85,
-        'line-width':['interpolate',['linear'],['zoom'],10,.6,15,2],'line-dasharray':[2,1.5]}},
-    {id:'found-line',type:'line',source:'found',filter:['!=',['geometry-type'],'Point'],layout:{'line-join':'round','line-cap':'round'},
-      paint:{'line-color':'#ff8a3d','line-width':['interpolate',['linear'],['zoom'],6,2.5,13,5],'line-blur':.4}},
-    {id:'found-point',type:'circle',source:'found',filter:['==',['geometry-type'],'Point'],
-      paint:{'circle-radius':7,'circle-color':'#ff8a3d','circle-stroke-color':'#1b0c05','circle-stroke-width':2}},
-    {id:'water-name',type:'symbol',source:'omt','source-layer':'water_name',
-      layout:{'text-field':NAME,'text-font':FONT,'text-size':13},
-      paint:{'text-color':'#bfe0f2','text-halo-color':'#0b1418','text-halo-width':1.4}},
-    {id:'peaks',type:'symbol',source:'omt','source-layer':'mountain_peak',minzoom:8,
-      filter:['<=',['coalesce',['get','rank'],99],['step',['zoom'],1,9,3,11,6,12,99]],
-      layout:{'text-field':['case',['has','ele'],['format',NAME,{},'\n',{},['concat',['to-string',['get','ele']],' מ׳'],{'font-scale':.82}],NAME],
-        'text-font':FONT,'text-size':12,'text-anchor':'bottom','text-offset':[0,-.3],'text-max-width':8},
-      paint:{'text-color':'#ffe7b0','text-halo-color':'#14110b','text-halo-width':1.4}},
-    {id:'places-minor',type:'symbol',source:'omt','source-layer':'place',minzoom:10,
-      filter:['in',['get','class'],['literal',['village','suburb','hamlet','neighbourhood','locality']]],
-      layout:{'text-field':NAME,'text-font':FONT,'text-size':['interpolate',['linear'],['zoom'],10,11,14,13],'text-max-width':8},
-      paint:{'text-color':'#d9e0da','text-halo-color':'#0f1716','text-halo-width':1.3}},
-    {id:'places-town',type:'symbol',source:'omt','source-layer':'place',minzoom:7,
-      filter:['==',['get','class'],'town'],
-      layout:{'text-field':NAME,'text-font':FONT,'text-size':['interpolate',['linear'],['zoom'],7,11,12,15],'text-max-width':8},
-      paint:{'text-color':'#eef2ee','text-halo-color':'#0f1716','text-halo-width':1.5}},
-    {id:'places-city',type:'symbol',source:'omt','source-layer':'place',
-      filter:['==',['get','class'],'city'],
-      layout:{'text-field':NAME,'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],5,12,10,18],'text-max-width':8},
-      paint:{'text-color':'#ffffff','text-halo-color':'#0f1716','text-halo-width':1.8}},
-    {id:'region-names',type:'symbol',source:'regionLabels',maxzoom:11,
-      layout:{visibility:'none','text-field':['get','name'],'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],6,12,10,17],
-        'text-letter-spacing':.12,'text-allow-overlap':false},
-      paint:{'text-color':'#f3d48a','text-halo-color':'#15120a','text-halo-width':1.6,'text-opacity':.95}}
-  ]
-};
+/* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,trails:false,regions:false,countries:false,sel:new Set()};
+let REG=[],CTR=[],FOUND=EMPTY;
+const fc=f=>({type:'FeatureCollection',features:f});
+const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
+
+function buildStyle(){
+  const M=SRC[S.data];
+  const dem={type:'raster-dem',tiles:[M.dem],encoding:'terrarium',tileSize:256,maxzoom:M.demMax};
+  if(M.bounds)dem.bounds=M.bounds;
+  const hide={visibility:'none'};
+  return {
+    version:8,glyphs:M.glyphs,
+    sources:{omt:M.vector,dem:{...dem},demShade:{...dem},
+      regions:{type:'geojson',data:fc(REG)},regionLabels:{type:'geojson',data:labelsOf(REG)},
+      countries:{type:'geojson',data:fc(CTR)},countryLabels:{type:'geojson',data:labelsOf(CTR)},
+      found:{type:'geojson',data:FOUND}},
+    sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
+    terrain:{source:'dem',exaggeration:S.ex},
+    layers:[
+      {id:'bg',type:'background',paint:{'background-color':'#4a4d4f'}},
+      {id:'relief',type:'color-relief',source:'demShade',paint:{'color-relief-opacity':1,'color-relief-color':['interpolate',['linear'],['elevation'],...STOPS.flat()]}},
+      {id:'shade',type:'hillshade',source:'demShade',paint:{
+        'hillshade-method':'multidirectional',
+        'hillshade-highlight-color':['rgba(255,255,255,0.32)','rgba(255,250,240,0.18)','rgba(255,255,255,0.12)','rgba(255,255,255,0.12)'],
+        'hillshade-shadow-color':['rgba(0,0,0,0.55)','rgba(0,0,0,0.35)','rgba(0,0,0,0.25)','rgba(0,0,0,0.25)'],
+        'hillshade-illumination-direction':[315,270,0,45],'hillshade-illumination-altitude':[35,40,40,45]}},
+      {id:'water',type:'fill',source:'omt','source-layer':'water',paint:{'fill-color':'#2e5c7c'}},
+      {id:'river',type:'line',source:'omt','source-layer':'waterway',minzoom:9,filter:['in',['get','class'],['literal',['river','stream']]],
+        paint:{'line-color':'#4f8fb3','line-width':['interpolate',['linear'],['zoom'],9,.4,14,1.6],'line-opacity':.7}},
+      {id:'border',type:'line',source:'omt','source-layer':'boundary',filter:['==',['get','admin_level'],2],
+        paint:{'line-color':'#e8efe9','line-opacity':.35,'line-width':1,'line-dasharray':[3,2]}},
+      {id:'country-dim',type:'fill',source:'countries',layout:hide,paint:{'fill-color':'#05080a','fill-opacity':0}},
+      {id:'country-sel',type:'fill',source:'countries',layout:hide,paint:{'fill-color':'#f3c45a','fill-opacity':.3}},
+      {id:'country-lines',type:'line',source:'countries',layout:{...hide,'line-join':'round'},
+        paint:{'line-color':'#e8efe9','line-opacity':.6,'line-width':['interpolate',['linear'],['zoom'],2,.5,8,1.5]}},
+      {id:'country-sel-line',type:'line',source:'countries',layout:{...hide,'line-join':'round'},
+        paint:{'line-color':'#ffd166','line-width':['interpolate',['linear'],['zoom'],2,1.5,8,4]}},
+      {id:'region-dim',type:'fill',source:'regions',layout:hide,paint:{'fill-color':'#05080a','fill-opacity':0}},
+      {id:'region-sel',type:'fill',source:'regions',layout:hide,paint:{'fill-color':'#f3c45a','fill-opacity':.32}},
+      {id:'region-lines',type:'line',source:'regions',layout:{...hide,'line-join':'round'},
+        paint:{'line-color':'#f3d48a','line-opacity':.75,'line-width':['interpolate',['linear'],['zoom'],6,.8,11,2],'line-dasharray':[4,2]}},
+      {id:'region-sel-line',type:'line',source:'regions',layout:{...hide,'line-join':'round'},
+        paint:{'line-color':'#ffd166','line-width':['interpolate',['linear'],['zoom'],6,2.5,11,4.5]}},
+      {id:'roads-major',type:'line',source:'omt','source-layer':'transportation',minzoom:8,
+        filter:['in',['get','class'],['literal',['motorway','trunk','primary']]],
+        paint:{'line-color':'#f2e6c9','line-opacity':['interpolate',['linear'],['zoom'],8,.18,12,.45],'line-width':['interpolate',['linear'],['zoom'],8,.5,14,2.5]}},
+      {id:'roads-minor',type:'line',source:'omt','source-layer':'transportation',minzoom:11,
+        filter:['in',['get','class'],['literal',['secondary','tertiary','minor']]],
+        paint:{'line-color':'#f2e6c9','line-opacity':.28,'line-width':['interpolate',['linear'],['zoom'],11,.3,15,1.4]}},
+      {id:'trails-paths',type:'line',source:'omt','source-layer':'transportation',minzoom:10,
+        filter:['in',['get','class'],['literal',['path','track']]],layout:{...hide,'line-join':'round'},
+        paint:{'line-color':['match',['get','class'],'track','#e8d6a8','#ffd27a'],'line-opacity':.85,
+          'line-width':['interpolate',['linear'],['zoom'],10,.6,15,2],'line-dasharray':[2,1.5]}},
+      {id:'found-line',type:'line',source:'found',filter:['!=',['geometry-type'],'Point'],layout:{'line-join':'round','line-cap':'round'},
+        paint:{'line-color':['coalesce',['get','color'],'#ff8a3d'],'line-width':['interpolate',['linear'],['zoom'],6,2.5,13,5],'line-blur':.4}},
+      {id:'found-point',type:'circle',source:'found',filter:['==',['geometry-type'],'Point'],
+        paint:{'circle-radius':7,'circle-color':['coalesce',['get','color'],'#ff8a3d'],'circle-stroke-color':'#1b0c05','circle-stroke-width':2}},
+      {id:'water-name',type:'symbol',source:'omt','source-layer':'water_name',
+        layout:{'text-field':NAME,'text-font':FONT,'text-size':13},
+        paint:{'text-color':'#bfe0f2','text-halo-color':'#0b1418','text-halo-width':1.4}},
+      {id:'peaks',type:'symbol',source:'omt','source-layer':'mountain_peak',minzoom:8,
+        filter:['<=',['coalesce',['get','rank'],99],['step',['zoom'],1,9,3,11,6,12,99]],
+        layout:{'text-field':['case',['has','ele'],['format',NAME,{},'\n',{},['concat',['to-string',['get','ele']],' מ׳'],{'font-scale':.82}],NAME],
+          'text-font':FONT,'text-size':12,'text-anchor':'bottom','text-offset':[0,-.3],'text-max-width':8},
+        paint:{'text-color':'#ffe7b0','text-halo-color':'#14110b','text-halo-width':1.4}},
+      {id:'places-minor',type:'symbol',source:'omt','source-layer':'place',minzoom:10,
+        filter:['in',['get','class'],['literal',['village','suburb','hamlet','neighbourhood','locality']]],
+        layout:{'text-field':NAME,'text-font':FONT,'text-size':['interpolate',['linear'],['zoom'],10,11,14,13],'text-max-width':8},
+        paint:{'text-color':'#d9e0da','text-halo-color':'#0f1716','text-halo-width':1.3}},
+      {id:'places-town',type:'symbol',source:'omt','source-layer':'place',minzoom:7,filter:['==',['get','class'],'town'],
+        layout:{'text-field':NAME,'text-font':FONT,'text-size':['interpolate',['linear'],['zoom'],7,11,12,15],'text-max-width':8},
+        paint:{'text-color':'#eef2ee','text-halo-color':'#0f1716','text-halo-width':1.5}},
+      {id:'places-city',type:'symbol',source:'omt','source-layer':'place',filter:['==',['get','class'],'city'],
+        layout:{'text-field':NAME,'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],5,12,10,18],'text-max-width':8},
+        paint:{'text-color':'#ffffff','text-halo-color':'#0f1716','text-halo-width':1.8}},
+      {id:'country-names',type:'symbol',source:'countryLabels',maxzoom:7,
+        layout:{...hide,'text-field':['get','name'],'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],2,10,6,15],'text-max-width':7},
+        paint:{'text-color':'#e8efe9','text-halo-color':'#0f1716','text-halo-width':1.6}},
+      {id:'region-names',type:'symbol',source:'regionLabels',maxzoom:11,
+        layout:{...hide,'text-field':['get','name'],'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],6,12,10,17],'text-letter-spacing':.12},
+        paint:{'text-color':'#f3d48a','text-halo-color':'#15120a','text-halo-width':1.6,'text-opacity':.95}}
+    ]
+  };
+}
 const LABEL_LAYERS=['water-name','peaks','places-minor','places-town','places-city'];
+const REGION_LAYERS=['region-dim','region-sel','region-lines','region-sel-line','region-names'];
+const COUNTRY_LAYERS=['country-dim','country-sel','country-lines','country-sel-line','country-names'];
 
-const map=new maplibregl.Map({container:'map',style,...HOME,maxPitch:80,attributionControl:false});
+const map=new maplibregl.Map({container:'map',style:buildStyle(),...HOME,maxPitch:80,attributionControl:false});
 map.addControl(new maplibregl.AttributionControl({compact:true}),'bottom-left');
 // start with the credits folded into the (i) button
 map.once('load',()=>{const c=map.getContainer().querySelector('.maplibregl-ctrl-attrib');if(c)c.classList.remove('maplibregl-compact-show');});
 
-/* ---------- controls ---------- */
-let mode='hyp';
-function setMode(m){
-  mode=m;
-  map.setLayoutProperty('relief','visibility',m==='hyp'?'visible':'none');
-  map.setPaintProperty('bg','background-color',m==='hyp'?'#4a4d4f':'#4d5053');
-  $('c-hyp').setAttribute('aria-pressed',m==='hyp');$('c-uni').setAttribute('aria-pressed',m==='uni');
-  $('legend').hidden=m!=='hyp';
-}
-$('c-hyp').onclick=()=>setMode('hyp');
-$('c-uni').onclick=()=>setMode('uni');
-$('ex').addEventListener('input',e=>{const v=+e.target.value;$('exv').textContent='×'+v;map.setTerrain({source:'dem',exaggeration:v});});
-let labelsOn=true;
-$('b-lbl').onclick=()=>{labelsOn=!labelsOn;$('b-lbl').setAttribute('aria-pressed',labelsOn);for(const id of LABEL_LAYERS)map.setLayoutProperty(id,'visibility',labelsOn?'visible':'none');};
-$('b-reset').onclick=()=>map.flyTo({...HOME,duration:1600});
-// layers draped over the 3D terrain are cached as textures; clear that cache after a toggle so the change shows
+// layers draped over the 3D terrain are cached as textures; clear that cache after a change so it shows
 function refreshTerrain(){try{map.terrain&&map.terrain.sourceCache.freeRtt();}catch(e){}map.triggerRepaint();}
-function toggler(btn,layers,extra){let on=false;$(btn).onclick=()=>{on=!on;$(btn).setAttribute('aria-pressed',on);
-  for(const id of layers)map.setLayoutProperty(id,'visibility',on?'visible':'none');if(extra)extra(on);refreshTerrain();};}
-toggler('b-regions',['region-lines','region-names','region-sel','region-sel-line','region-dim'],on=>{regionsOn=on;$('regionctl').hidden=!on;selectRegion(on?selected:'');});
+/* push S onto the current style: visibility, selection filters, colors */
+function apply(){
+  if(!map.getLayer('bg'))return;
+  const vis=(id,on)=>{if(map.getLayer(id))map.setLayoutProperty(id,'visibility',on?'visible':'none');};
+  vis('relief',S.color==='hyp');
+  map.setPaintProperty('bg','background-color',S.color==='hyp'?'#4a4d4f':'#4d5053');
+  LABEL_LAYERS.forEach(id=>vis(id,S.labels));
+  vis('trails-paths',S.trails);
+  REGION_LAYERS.forEach(id=>vis(id,S.regions));
+  COUNTRY_LAYERS.forEach(id=>vis(id,S.countries));
+  const sel=['in',['get','id'],['literal',[...S.sel]]];
+  ['region-sel','region-sel-line','country-sel','country-sel-line'].forEach(id=>map.setFilter(id,sel));
+  ['region-dim','country-dim'].forEach(id=>{map.setFilter(id,['!',sel]);map.setPaintProperty(id,'fill-opacity',S.sel.size?.35:0);});
+  setMarked(S.trails);
+  refreshTerrain();
+}
+map.on('load',apply);
 
-/* ---------- regions: drawn as polygons clipped to the country outline (internal lines approximate, a few km) ---------- */
-let regionsOn=false,REG=[];
-fetch('regions.geojson').then(r=>r.json()).then(fc=>{
-  REG=fc.features;
-  const set=()=>{map.getSource('regions').setData(fc);
-    map.getSource('regionLabels').setData({type:'FeatureCollection',features:REG.map(f=>({type:'Feature',properties:{name:f.properties.name},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}}))});};
-  map.isStyleLoaded()?set():map.once('load',set);
-  const sel=$('region');
-  [...REG].sort((a,b)=>a.properties.name.localeCompare(b.properties.name,'he')).forEach(f=>{const o=document.createElement('option');o.value=f.properties.id;o.textContent=f.properties.name;sel.append(o);});
-}).catch(()=>{$('b-regions').disabled=true;$('b-regions').title='קובץ האזורים לא נטען';});
+/* ---------- controls ---------- */
+function press(id,on){$(id).setAttribute('aria-pressed',on);}
+function setColor(c){S.color=c;press('c-hyp',c==='hyp');press('c-uni',c==='uni');$('legend').hidden=c!=='hyp';apply();}
+$('c-hyp').onclick=()=>setColor('hyp');
+$('c-uni').onclick=()=>setColor('uni');
+$('ex').addEventListener('input',e=>{S.ex=+e.target.value;$('exv').textContent='×'+S.ex;map.setTerrain({source:'dem',exaggeration:S.ex});});
+$('b-lbl').onclick=()=>{S.labels=!S.labels;press('b-lbl',S.labels);apply();};
+$('b-trails').onclick=()=>{S.trails=!S.trails;press('b-trails',S.trails);apply();};
+$('b-reset').onclick=()=>map.flyTo({...HOME,duration:1600});
+
+function setDataMode(m,first){
+  S.data=m;store.set('dataMode',m);
+  press('m-local',m==='local');press('m-global',m==='global');
+  if(first)return;
+  markedFailed=false;
+  map.setStyle(buildStyle(),{diff:false});
+  map.once('style.load',()=>{apply();const c=map.getCenter(),b=LOCAL_BOUNDS;
+    if(m==='local'&&(c.lng<b[0]||c.lng>b[2]||c.lat<b[1]||c.lat>b[3]))map.flyTo({...HOME,duration:1600});});
+  pins.forEach(P=>{P.z=null;P.err=false;readPin(P);});render();
+}
+$('m-local').onclick=()=>{if(S.data!=='local')setDataMode('local');};
+$('m-global').onclick=()=>{if(S.data!=='global')setDataMode('global');};
+setDataMode(S.data,true);
+
+/* ---------- regions and countries: pick several at once; picked ones are highlighted and the rest dimmed ---------- */
+const AREAS=new Map();
+function loadAreas(url,assign,btn,what){
+  return fetch(url).then(r=>r.json()).then(d=>{assign(d.features);d.features.forEach(f=>AREAS.set(f.properties.id,f));
+    const set=()=>{if(url.startsWith('regions')){map.getSource('regions').setData(fc(REG));map.getSource('regionLabels').setData(labelsOf(REG));}
+      else{map.getSource('countries').setData(fc(CTR));map.getSource('countryLabels').setData(labelsOf(CTR));}refreshTerrain();};
+    map.isStyleLoaded()?set():map.once('load',set);fillPicker();})
+   .catch(()=>{$(btn).disabled=true;$(btn).title=`קובץ ה${what} לא נטען`;});
+}
+loadAreas('regions.geojson',f=>REG=f,'b-regions','אזורים');
+loadAreas('countries.geojson',f=>CTR=f,'b-countries','מדינות');
+const byName=(a,b)=>a.properties.name.localeCompare(b.properties.name,'he');
+function fillPicker(){
+  const sel=$('addsel');sel.length=1;
+  for(const [on,list,label] of [[S.regions,REG,'אזורים בישראל'],[S.countries,CTR,'מדינות']]){
+    if(!on||!list.length)continue;
+    const g=document.createElement('optgroup');g.label=label;
+    [...list].sort(byName).forEach(f=>{if(S.sel.has(f.properties.id))return;const o=document.createElement('option');o.value=f.properties.id;o.textContent=f.properties.name;g.append(o);});
+    sel.append(g);
+  }
+}
+function renderSel(){
+  const chips=$('chips');chips.textContent='';let area=0;
+  for(const id of S.sel){const f=AREAS.get(id);if(!f)continue;area+=f.properties.area;
+    const c=document.createElement('span');c.className='chip';c.textContent=f.properties.name;
+    const x=document.createElement('button');x.textContent='×';x.setAttribute('aria-label','הסרת '+f.properties.name);x.onclick=()=>toggleSel(id);
+    c.append(x);chips.append(c);}
+  $('selinfo').textContent=S.sel.size?`שטח כולל כ־${area.toLocaleString('he-IL')} קמ״ר`:'נגיעה במפה בוחרת ומבטלת';
+  $('b-selclear').hidden=!S.sel.size;
+  $('selctl').hidden=!(S.regions||S.countries);
+  fillPicker();
+}
+function flyToArea(f){
+  const [w,s,e,n]=f.properties.bbox;
+  if(e-w>180)map.flyTo({center:[f.properties.lx,f.properties.ly],zoom:2.5,pitch:30,duration:1800});
+  else map.fitBounds([[w,s],[e,n]],{padding:{top:140,bottom:200,left:50,right:50},pitch:45,duration:1800,maxZoom:11});
+}
+function toggleSel(id,fly){
+  if(!id)return;
+  if(S.sel.has(id))S.sel.delete(id);else{S.sel.add(id);if(fly)flyToArea(AREAS.get(id));}
+  renderSel();apply();
+}
+$('addsel').addEventListener('change',e=>{toggleSel(e.target.value,true);e.target.value='';});
+$('b-selclear').onclick=()=>{S.sel.clear();renderSel();apply();};
+function showAreas(kind,on){
+  S[kind]=on;press(kind==='regions'?'b-regions':'b-countries',on);
+  if(!on)for(const id of [...S.sel])if(id.startsWith('c_')===(kind==='countries'))S.sel.delete(id);
+  renderSel();apply();
+}
+$('b-regions').onclick=()=>showAreas('regions',!S.regions);
+$('b-countries').onclick=()=>showAreas('countries',!S.countries);
 function inRing(pt,ring){let c=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [xi,yi]=ring[i],[xj,yj]=ring[j];
   if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))c=!c;}return c;}
 function inPoly(pt,g){const polys=g.type==='Polygon'?[g.coordinates]:g.coordinates;
   return polys.some(p=>inRing(pt,p[0])&&!p.slice(1).some(h=>inRing(pt,h)));}
-let selected='';
-function selectRegion(id,fly){
-  selected=id||'';
-  const v=selected||SEL_NONE;
-  map.setFilter('region-sel',['==',['get','id'],v]);
-  map.setFilter('region-sel-line',['==',['get','id'],v]);
-  map.setFilter('region-dim',['!=',['get','id'],v]);
-  map.setPaintProperty('region-dim','fill-opacity',selected?.35:0);
-  $('region').value=selected;
-  const f=REG.find(f=>f.properties.id===selected);
-  $('regioninfo').textContent=f?`שטח כ־${f.properties.area.toLocaleString('he-IL')} קמ״ר`:'נגיעה במפה בוחרת אזור';
-  if(f&&fly){const [w,s,e,n]=f.properties.bbox;map.fitBounds([[w,s],[e,n]],{padding:{top:140,bottom:190,left:50,right:50},pitch:45,duration:1800,maxZoom:11});}
-  refreshTerrain();
+function areaAt(lngLat){
+  const pt=[lngLat.lng,lngLat.lat];
+  const f=(S.regions&&REG.find(f=>inPoly(pt,f.geometry)))||(S.countries&&CTR.find(f=>inPoly(pt,f.geometry)));
+  return f?f.properties.id:'';
 }
-$('region').addEventListener('change',e=>selectRegion(e.target.value,true));
-function regionAt(lngLat){const pt=[lngLat.lng,lngLat.lat];const f=REG.find(f=>inPoly(pt,f.geometry));return f?f.properties.id:'';}
 
 /* marked hiking routes come from Waymarked Trails. The layer is only added while trails are on,
    and removed for good if its server refuses the tiles, so a failure there never affects the rest of the map. */
@@ -303,7 +397,6 @@ function setMarked(on){
   if(on&&!markedFailed&&!map.getSource('marked')){map.addSource('marked',MARKED);map.addLayer({id:'trails-marked',type:'raster',source:'marked',minzoom:8,paint:{'raster-opacity':.9}},'found-line');}
   if(!on&&map.getLayer('trails-marked')){map.removeLayer('trails-marked');map.removeSource('marked');}
 }
-toggler('b-trails',['trails-paths'],setMarked);
 map.on('error',e=>{
   if(e.sourceId!=='marked'||markedFailed)return;
   markedFailed=true;setMarked(false);refreshTerrain();
@@ -318,16 +411,43 @@ const TYPE_HE={city:'עיר',town:'עיירה',village:'יישוב',hamlet:'יי
 const results=$('results'),smsg=$('smsg');
 let searching=false;
 function showMsg(t){smsg.textContent=t;smsg.hidden=!t;}
-function clearFound(){map.getSource('found').setData({type:'FeatureCollection',features:[]});$('b-route').hidden=true;}
-$('b-route').onclick=clearFound;
+/* several search results can stay on the map together, each in its own color */
+const FCOLORS=['#ff8a3d','#4fd1ff','#ff5fa2','#b6f25c','#ffd166','#c49bff','#ff6b5b','#5cf2c1'];
+const picked=new Map();   // osm key -> {name,color,geometry,bbox}
+let colorIx=0;
+const keyOf=r=>r.osm_type+r.osm_id;
+function syncFound(){
+  FOUND=fc([...picked.entries()].map(([k,p])=>({type:'Feature',properties:{key:k,name:p.name,color:p.color},geometry:p.geometry})));
+  const src=map.getSource('found');if(src)src.setData(FOUND);
+  const box=$('foundchips');box.textContent='';
+  for(const [k,p] of picked){
+    const c=document.createElement('span');c.className='fchip';
+    const dot=document.createElement('i');dot.style.background=p.color;
+    const t=document.createElement('span');t.textContent=p.name;
+    const x=document.createElement('button');x.textContent='×';x.setAttribute('aria-label','הסרת '+p.name);x.onclick=()=>{picked.delete(k);syncFound();markResults();};
+    c.append(dot,t,x);box.append(c);
+  }
+  $('found').hidden=!picked.size;
+  refreshTerrain();
+}
+function fitPicked(){
+  if(!picked.size)return;
+  let w=180,s=90,e=-180,n=-90;
+  for(const p of picked.values()){const [bs,bn,bw,be]=p.bbox;w=Math.min(w,bw);s=Math.min(s,bs);e=Math.max(e,be);n=Math.max(n,bn);}
+  if(n-s<0.01&&e-w<0.01)map.flyTo({center:[(w+e)/2,(s+n)/2],zoom:13.5,pitch:60,duration:2000});
+  else map.fitBounds([[w,s],[e,n]],{padding:{top:160,bottom:200,left:60,right:60},pitch:50,duration:2000,maxZoom:14});
+}
+$('b-route').onclick=()=>{picked.clear();syncFound();markResults();};
+let lastList=[];
+function markResults(){[...results.querySelectorAll('button')].forEach((b,i)=>b.classList.toggle('on',!!lastList[i]&&picked.has(keyOf(lastList[i]))));}
 function pick(r){
-  results.hidden=true;showMsg('');
-  const g=r.geojson&&r.geojson.type!=='Point'?r.geojson:{type:'Point',coordinates:[+r.lon,+r.lat]};
-  map.getSource('found').setData({type:'Feature',properties:{},geometry:g});
-  $('b-route').hidden=false;
-  const [s,n,w,e]=r.boundingbox.map(Number);
-  if(g.type==='Point'||(n-s<0.01&&e-w<0.01))map.flyTo({center:[+r.lon,+r.lat],zoom:13.5,pitch:60,duration:2200});
-  else map.fitBounds([[w,s],[e,n]],{padding:{top:140,bottom:150,left:60,right:60},pitch:50,duration:2200,maxZoom:14});
+  const k=keyOf(r);
+  if(picked.has(k))picked.delete(k);
+  else{
+    const g=r.geojson&&r.geojson.type!=='Point'?r.geojson:{type:'Point',coordinates:[+r.lon,+r.lat]};
+    picked.set(k,{name:r.name||r.display_name.split(', ')[0],color:FCOLORS[colorIx++%FCOLORS.length],geometry:g,bbox:r.boundingbox.map(Number)});
+  }
+  syncFound();markResults();fitPicked();
 }
 $('sform').addEventListener('submit',async e=>{
   e.preventDefault();
@@ -338,7 +458,7 @@ $('sform').addEventListener('submit',async e=>{
       polygon_geojson:'1',polygon_threshold:'0.0003',viewbox:'34.2,33.4,35.95,29.4',bounded:'0'});
     const res=await fetch(u);if(!res.ok)throw new Error(res.status);
     const list=await res.json();
-    results.textContent='';
+    results.textContent='';lastList=list;
     if(!list.length){showMsg('לא נמצאו תוצאות. נסו שם אחר או כתיב אחר.');return;}
     showMsg('');
     for(const r of list){
@@ -348,34 +468,36 @@ $('sform').addEventListener('submit',async e=>{
       const d=document.createElement('span');d.className='rd';d.textContent=[TYPE_HE[r.type],parts.slice(1,3).join(', ')].filter(Boolean).join(' · ');
       b.append(n,d);b.onclick=()=>pick(r);li.append(b);results.append(li);
     }
-    results.hidden=false;
+    results.hidden=false;markResults();
+    if(list.length>1)showMsg('אפשר לבחור כמה תוצאות. כל אחת תסומן בצבע משלה.');
   }catch(err){showMsg('החיפוש לא הצליח. בדקו את החיבור לאינטרנט ונסו שוב בעוד רגע.');}
   finally{searching=false;}
 });
 $('q').addEventListener('input',()=>{if(!$('q').value){results.hidden=true;showMsg('');}});
 
-/* ---------- exact elevation from the terrain tiles (zoom 14, about 8 m per pixel) ---------- */
+/* ---------- exact elevation read from the terrain tiles of the current data mode ---------- */
 const tileCache=new Map();
-function tilePixels(z,x,y){
-  const key=`${z}/${x}/${y}`;
-  if(!tileCache.has(key)){
-    tileCache.set(key,fetch(TERRARIUM.replace('{z}',z).replace('{x}',x).replace('{y}',y))
+function tilePixels(url){
+  if(!tileCache.has(url)){
+    tileCache.set(url,fetch(url)
       .then(r=>{if(!r.ok)throw new Error(r.status);return r.blob();})
       .then(b=>createImageBitmap(b))
       .then(img=>{const c=document.createElement('canvas');c.width=c.height=256;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);return g.getImageData(0,0,256,256).data;})
-      .catch(e=>{tileCache.delete(key);throw e;}));
+      .catch(e=>{tileCache.delete(url);throw e;}));
   }
-  return tileCache.get(key);
+  return tileCache.get(url);
 }
 async function elevationAt(lng,lat){
-  if(lng<DEM_BOUNDS[0]||lng>DEM_BOUNDS[2]||lat<DEM_BOUNDS[1]||lat>DEM_BOUNDS[3])throw new Error('outside');
-  const z=DEM_MAXZOOM,n=2**z,r=Math.PI/180;
+  const M=SRC[S.data],b=M.bounds;
+  if(b&&(lng<b[0]||lng>b[2]||lat<b[1]||lat>b[3]))throw new Error('outside');
+  const z=M.elevZ||M.demMax,n=2**z,r=Math.PI/180;
   const fx=(lng+180)/360*n*256-.5;
   const fy=(1-Math.log(Math.tan(lat*r)+1/Math.cos(lat*r))/Math.PI)/2*n*256-.5;
   const x0=Math.floor(fx),y0=Math.floor(fy),tx=fx-x0,ty=fy-y0;
-  const val=async(px,py)=>{const d=await tilePixels(z,Math.floor(px/256),Math.floor(py/256));const i=(((py%256)+256)%256*256+((px%256)+256)%256)*4;return d[i]*256+d[i+1]+d[i+2]/256-32768;};
-  const [a,b,c,d]=await Promise.all([val(x0,y0),val(x0+1,y0),val(x0,y0+1),val(x0+1,y0+1)]);
-  return (a*(1-tx)+b*tx)*(1-ty)+(c*(1-tx)+d*tx)*ty;
+  const val=async(px,py)=>{const d=await tilePixels(M.dem.replace('{z}',z).replace('{x}',Math.floor(px/256)).replace('{y}',Math.floor(py/256)));
+    const i=(((py%256)+256)%256*256+((px%256)+256)%256)*4;return d[i]*256+d[i+1]+d[i+2]/256-32768;};
+  const [a,bb,c,d]=await Promise.all([val(x0,y0),val(x0+1,y0),val(x0,y0+1),val(x0+1,y0+1)]);
+  return (a*(1-tx)+bb*tx)*(1-ty)+(c*(1-tx)+d*tx)*ty;
 }
 
 /* ---------- survey pins ---------- */
@@ -400,20 +522,22 @@ function render(){
   if(!P){$('last').textContent='—';$('lastco').textContent='געו במפה כדי לסמן נקודה';$('lastnote').textContent='';return;}
   $('last').textContent=hText(P);
   $('lastco').textContent=`${P.lat.toFixed(5)}°N  ${P.lng.toFixed(5)}°E`;
-  $('lastnote').textContent=P.err==='outside'?'הנקודה מחוץ לאזור שיש עליו נתוני גובה.':P.err?'לא הצלחתי לקרוא את הגובה. בדקו את החיבור לאינטרנט.':P.z==null?'קורא גובה…':'מנתוני Copernicus (רשת של כ־30 מ׳, דיוק טיפוסי של כמה מטרים)';
+  $('lastnote').textContent=P.err==='outside'?'הנקודה מחוץ לאזור המקומי. לקריאת גובה כאן עברו למצב "עולמי".':P.err?'לא הצלחתי לקרוא את הגובה. בדקו את החיבור לאינטרנט.':P.z==null?'קורא גובה…':SRC[S.data].note;
 }
 function addPin(lngLat){
   const el=document.createElement('div');el.className='pin';
   const label=document.createElement('b');el.append(label,document.createElement('i'),document.createElement('s'));
   const marker=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(lngLat).addTo(map);
   const P={lng:lngLat.lng,lat:lngLat.lat,z:null,marker,label,err:false};
-  pins.push(P);render();
+  pins.push(P);render();readPin(P);
+}
+function readPin(P){
   elevationAt(P.lng,P.lat).then(z=>{P.z=z;render();}).catch(e=>{P.err=e&&e.message==='outside'?'outside':true;render();});
 }
 function removePin(i){pins.splice(i,1)[0].marker.remove();render();}
 $('b-clear').onclick=()=>{while(pins.length)removePin(pins.length-1);};
 map.on('click',e=>{if(!results.hidden){results.hidden=true;return;}
-  if(regionsOn){const id=regionAt(e.lngLat);selectRegion(id===selected?'':id,false);return;}
+  if(S.regions||S.countries){toggleSel(areaAt(e.lngLat),false);return;}
   addPin(e.lngLat);});
 window.reliefMap=map;
 render();
