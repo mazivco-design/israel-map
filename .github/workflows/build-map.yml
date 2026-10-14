@@ -40,12 +40,12 @@ jobs:
               --output=map/israel.pmtiles --maxzoom=$Z --languages=he,en,ar --force
             SIZE=$(stat -c %s map/israel.pmtiles)
             echo "maxzoom $Z -> $SIZE bytes"
-            if [ "$SIZE" -lt 95000000 ]; then echo "$Z" > map/maxzoom.txt; break; fi
+            if [ "$SIZE" -lt 95000000 ]; then echo "maxzoom=$Z bytes=$SIZE built=$(date -u +%F)" > map/build.txt; break; fi
           done
           ls -la map
-          test -f map/maxzoom.txt
+          test -f map/build.txt
       - name: Copy label fonts
-        run: python tools/fetch_fonts.py fonts && du -sh fonts
+        run: python tools/fetch_fonts.py fonts | tee -a map/build.txt && du -sh fonts
       - name: Commit
         run: |
           rm -rf data planetiler.jar
