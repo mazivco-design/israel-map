@@ -55,7 +55,18 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .pin i{width:2px;height:10px;background:var(--pin)}
 .pin s{width:9px;height:9px;border-radius:50%;background:var(--pin);box-shadow:0 0 0 2px #1b0c05;text-decoration:none}
 .maplibregl-ctrl-attrib{font-size:10px}
-@media (max-width:560px){#title h1{font-size:1.15rem}#title p{display:none}input[type=range]{width:90px}#panel{gap:8px 10px;padding:8px 10px}#log{max-height:36%}}
+#search{position:relative;margin-top:8px}
+#search form{display:flex;gap:6px}
+#q{flex:1;min-width:0;font:inherit;font-size:.9rem;color:var(--fg);background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+#q::placeholder{color:var(--muted)}
+#results{list-style:none;margin:6px 0 0;padding:0;max-height:min(50vh,320px);overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+#results button{width:100%;text-align:right;border:none;border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;gap:1px;background:transparent}
+#results button:hover,#results button:focus-visible{background:rgba(233,184,74,.14)}
+#results .rn{font-weight:700;font-size:.88rem}
+#results .rd{color:var(--muted);font-size:.74rem;line-height:1.3}
+#smsg{color:var(--muted);font-size:.78rem;margin:6px 0 0}
+#b-route{margin-top:6px}
+@media (max-width:560px){#title h1{font-size:1.15rem}#title p{display:none}#title{max-width:calc(55vw - 18px)}input[type=range]{width:90px}#panel{gap:8px 10px;padding:8px 10px}#log{max-height:36%}}
 </style>
 </head>
 <body>
@@ -64,6 +75,15 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 <div id="title" class="card">
   <h1>תבליט ישראל</h1>
   <p>גרירה להזזה, שתי אצבעות לסיבוב והטיה, צביטה לזום. נגיעה במפה מסמנת נקודה וקוראת את הגובה שלה.</p>
+  <div id="search">
+    <form id="sform" role="search">
+      <input id="q" type="search" placeholder="חיפוש מקום, הר או מסלול" aria-label="חיפוש" autocomplete="off" enterkeyhint="search">
+      <button type="submit">חפש</button>
+    </form>
+    <p id="smsg" hidden></p>
+    <ul id="results" hidden></ul>
+    <button id="b-route" hidden>הסרת הסימון מהמפה</button>
+  </div>
 </div>
 
 <section id="log" class="card" aria-live="polite">
@@ -93,6 +113,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   </div>
   <div class="ctl">
     <button id="b-lbl" aria-pressed="true">שמות</button>
+    <button id="b-trails" aria-pressed="false">שבילים</button>
+    <button id="b-regions" aria-pressed="false">אזורים</button>
     <button id="b-reset">איפוס מבט</button>
   </div>
   <div id="legend">
@@ -121,13 +143,59 @@ maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/
 const small=innerWidth<600;
 const HOME={center:[35.05,31.45],zoom:small?6.4:7.0,pitch:55,bearing:-15};
 
+
+/* Geographic regions, drawn by hand along familiar landforms (approximate, a few km).
+   Only the dividing lines between regions are drawn; parts that run into the sea are hidden under the water layer. */
+const REGION_LINES=[
+ [[35.135,33.09],[35.13,33.0],[35.12,32.93],[35.15,32.88],[35.14,32.80],[35.12,32.71]],          // western Galilee coast / Galilee
+ [[35.12,32.93],[35.30,32.915],[35.45,32.92],[35.53,32.89]],                                      // Upper / Lower Galilee (Beit HaKerem valley)
+ [[35.58,33.27],[35.57,33.15],[35.57,33.05],[35.555,32.97],[35.55,32.89]],                        // Upper Galilee / Hula valley
+ [[35.555,32.97],[35.635,32.97]],                                                                  // Hula valley south edge
+ [[35.69,33.25],[35.645,33.12],[35.63,33.0],[35.635,32.90],[35.65,32.82],[35.64,32.70]],           // Golan heights west edge
+ [[34.98,32.83],[35.05,32.76],[35.12,32.71],[35.10,32.66]],                                       // Carmel / Haifa bay
+ [[35.12,32.71],[35.25,32.685],[35.33,32.66],[35.40,32.60],[35.47,32.56]],                        // Lower Galilee / Jezreel valley
+ [[35.57,32.70],[35.55,32.62],[35.50,32.575],[35.47,32.56],[35.48,32.49]],                        // Lower Galilee & Jezreel / Beit She'an
+ [[35.10,32.66],[35.18,32.585],[35.27,32.52],[35.38,32.51],[35.48,32.49]],                        // Jezreel / Menashe & Samaria
+ [[34.90,32.55],[34.98,32.565],[35.05,32.62],[35.10,32.66]],                                      // Carmel / Sharon & Menashe
+ [[34.98,32.565],[35.0,32.52],[35.03,32.49]],                                                      // Sharon / Menashe
+ [[35.03,32.49],[35.10,32.52],[35.18,32.585]],                                                     // Menashe / Samaria (Wadi Ara)
+ [[35.03,32.49],[35.02,32.30],[34.98,32.15],[34.97,32.05],[35.00,31.95]],                         // Sharon / Samaria
+ [[35.48,32.49],[35.47,32.30],[35.43,32.10],[35.40,31.95],[35.38,31.78]],                         // mountains / Jordan valley
+ [[35.47,32.38],[35.57,32.38]],                                                                    // Beit She'an / Jordan valley
+ [[34.78,32.10],[34.90,32.10],[34.97,32.08]],                                                      // Sharon / Gush Dan (Yarkon)
+ [[34.97,32.08],[34.93,31.95],[34.92,31.90]],                                                      // Gush Dan / Shfela north
+ [[34.70,31.86],[34.80,31.90],[34.92,31.90]],                                                      // Gush Dan / southern coastal plain
+ [[34.92,31.90],[34.85,31.75],[34.78,31.60],[34.75,31.48]],                                       // coastal plain / Shfela
+ [[35.00,31.95],[35.02,31.80],[34.98,31.65],[34.95,31.50],[34.95,31.40]],                         // Shfela / Judean mountains
+ [[35.00,31.95],[35.20,31.97],[35.35,32.0],[35.41,32.0]],                                          // Samaria / Judea
+ [[35.35,32.0],[35.30,31.88],[35.27,31.78],[35.22,31.65],[35.17,31.50],[35.15,31.38]],            // Judean mountains / Judean desert
+ [[35.15,31.38],[35.25,31.32],[35.38,31.30]],                                                      // Judean desert / Negev
+ [[34.52,31.45],[34.65,31.46],[34.75,31.48],[34.95,31.40],[35.05,31.38],[35.15,31.38]],            // coastal plain, Shfela & Judea / northern Negev
+ [[34.29,31.10],[34.60,31.05],[34.85,31.05],[35.10,31.05],[35.30,31.08],[35.37,31.02]],            // northern Negev / Negev highlands
+ [[35.37,31.02],[35.30,30.85],[35.22,30.62],[35.16,30.38],[35.10,30.12],[35.06,29.90],[35.05,29.75]], // Negev highlands / Arava
+ [[34.88,29.75],[35.05,29.75]]                                                                     // Negev / Eilat mountains
+];
+const REGION_NAMES=[
+ ['הגליל העליון',35.36,33.00],['הגליל התחתון',35.40,32.77],['רמת הגולן',35.76,33.00],['עמק החולה',35.60,33.12],
+ ['מישור החוף הצפוני',35.09,32.98],['הכרמל',35.03,32.70],['עמק יזרעאל',35.28,32.61],['עמק בית שאן',35.52,32.45],
+ ['רמות מנשה',35.06,32.56],['השרון',34.88,32.28],['גוש דן',34.82,32.01],['מישור החוף הדרומי',34.62,31.70],
+ ['השפלה',34.89,31.70],['הרי שומרון',35.22,32.22],['הרי יהודה',35.08,31.62],['מדבר יהודה',35.33,31.55],
+ ['בקעת הירדן',35.47,32.10],['צפון הנגב',34.75,31.25],['הר הנגב',34.85,30.60],['הערבה',35.17,30.45],['הרי אילת',34.95,29.63]
+];
+const REGIONS={type:'FeatureCollection',features:[
+ ...REGION_LINES.map(c=>({type:'Feature',properties:{kind:'line'},geometry:{type:'LineString',coordinates:c}})),
+ ...REGION_NAMES.map(([n,x,y])=>({type:'Feature',properties:{kind:'name',name:n},geometry:{type:'Point',coordinates:[x,y]}}))
+]};
+
 const style={
   version:8,
   glyphs:'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
   sources:{
     omt:{type:'vector',url:'https://tiles.openfreemap.org/planet',attribution:ATTR},
     dem:{type:'raster-dem',tiles:[TERRARIUM],encoding:'terrarium',tileSize:256,maxzoom:15},
-    demShade:{type:'raster-dem',tiles:[TERRARIUM],encoding:'terrarium',tileSize:256,maxzoom:15}
+    demShade:{type:'raster-dem',tiles:[TERRARIUM],encoding:'terrarium',tileSize:256,maxzoom:15},
+    regions:{type:'geojson',data:REGIONS},
+    found:{type:'geojson',data:{type:'FeatureCollection',features:[]}}
   },
   sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
   terrain:{source:'dem',exaggeration:2},
@@ -141,6 +209,8 @@ const style={
       'hillshade-shadow-color':['rgba(0,0,0,0.55)','rgba(0,0,0,0.35)','rgba(0,0,0,0.25)','rgba(0,0,0,0.25)'],
       'hillshade-illumination-direction':[315,270,0,45],
       'hillshade-illumination-altitude':[35,40,40,45]}},
+    {id:'region-lines',type:'line',source:'regions',filter:['==',['get','kind'],'line'],layout:{visibility:'none','line-join':'round'},
+      paint:{'line-color':'#f3d48a','line-opacity':.8,'line-width':['interpolate',['linear'],['zoom'],6,1,11,2.2],'line-dasharray':[4,2]}},
     {id:'water',type:'fill','source':'omt','source-layer':'water',paint:{'fill-color':'#2e5c7c'}},
     {id:'river',type:'line',source:'omt','source-layer':'waterway',minzoom:9,filter:['in',['get','class'],['literal',['river','stream']]],
       paint:{'line-color':'#4f8fb3','line-width':['interpolate',['linear'],['zoom'],9,.4,14,1.6],'line-opacity':.7}},
@@ -150,8 +220,16 @@ const style={
       filter:['in',['get','class'],['literal',['motorway','trunk','primary']]],
       paint:{'line-color':'#f2e6c9','line-opacity':['interpolate',['linear'],['zoom'],8,.18,12,.45],'line-width':['interpolate',['linear'],['zoom'],8,.5,14,2.5]}},
     {id:'roads-minor',type:'line',source:'omt','source-layer':'transportation',minzoom:11,
-      filter:['in',['get','class'],['literal',['secondary','tertiary','minor','track','path']]],
+      filter:['in',['get','class'],['literal',['secondary','tertiary','minor']]],
       paint:{'line-color':'#f2e6c9','line-opacity':.28,'line-width':['interpolate',['linear'],['zoom'],11,.3,15,1.4]}},
+    {id:'trails-paths',type:'line',source:'omt','source-layer':'transportation',minzoom:10,
+      filter:['in',['get','class'],['literal',['path','track']]],layout:{visibility:'none','line-join':'round'},
+      paint:{'line-color':['match',['get','class'],'track','#e8d6a8','#ffd27a'],'line-opacity':.85,
+        'line-width':['interpolate',['linear'],['zoom'],10,.6,15,2],'line-dasharray':[2,1.5]}},
+    {id:'found-line',type:'line',source:'found',filter:['!=',['geometry-type'],'Point'],layout:{'line-join':'round','line-cap':'round'},
+      paint:{'line-color':'#ff8a3d','line-width':['interpolate',['linear'],['zoom'],6,2.5,13,5],'line-blur':.4}},
+    {id:'found-point',type:'circle',source:'found',filter:['==',['geometry-type'],'Point'],
+      paint:{'circle-radius':7,'circle-color':'#ff8a3d','circle-stroke-color':'#1b0c05','circle-stroke-width':2}},
     {id:'water-name',type:'symbol',source:'omt','source-layer':'water_name',
       layout:{'text-field':NAME,'text-font':FONT,'text-size':13},
       paint:{'text-color':'#bfe0f2','text-halo-color':'#0b1418','text-halo-width':1.4}},
@@ -171,7 +249,11 @@ const style={
     {id:'places-city',type:'symbol',source:'omt','source-layer':'place',
       filter:['==',['get','class'],'city'],
       layout:{'text-field':NAME,'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],5,12,10,18],'text-max-width':8},
-      paint:{'text-color':'#ffffff','text-halo-color':'#0f1716','text-halo-width':1.8}}
+      paint:{'text-color':'#ffffff','text-halo-color':'#0f1716','text-halo-width':1.8}},
+    {id:'region-names',type:'symbol',source:'regions',filter:['==',['get','kind'],'name'],maxzoom:11,
+      layout:{visibility:'none','text-field':['get','name'],'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],6,12,10,17],
+        'text-letter-spacing':.12,'text-allow-overlap':false},
+      paint:{'text-color':'#f3d48a','text-halo-color':'#15120a','text-halo-width':1.6,'text-opacity':.95}}
   ]
 };
 const LABEL_LAYERS=['water-name','peaks','places-minor','places-town','places-city'];
@@ -194,6 +276,71 @@ $('ex').addEventListener('input',e=>{const v=+e.target.value;$('exv').textConten
 let labelsOn=true;
 $('b-lbl').onclick=()=>{labelsOn=!labelsOn;$('b-lbl').setAttribute('aria-pressed',labelsOn);for(const id of LABEL_LAYERS)map.setLayoutProperty(id,'visibility',labelsOn?'visible':'none');};
 $('b-reset').onclick=()=>map.flyTo({...HOME,duration:1600});
+// layers draped over the 3D terrain are cached as textures; clear that cache after a toggle so the change shows
+function refreshTerrain(){try{map.terrain&&map.terrain.sourceCache.freeRtt();}catch(e){}map.triggerRepaint();}
+function toggler(btn,layers,extra){let on=false;$(btn).onclick=()=>{on=!on;$(btn).setAttribute('aria-pressed',on);
+  for(const id of layers)map.setLayoutProperty(id,'visibility',on?'visible':'none');if(extra)extra(on);refreshTerrain();};}
+toggler('b-regions',['region-lines','region-names']);
+
+/* marked hiking routes come from Waymarked Trails. The layer is only added while trails are on,
+   and removed for good if its server refuses the tiles, so a failure there never affects the rest of the map. */
+let markedFailed=false;
+const MARKED={type:'raster',tiles:['https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png'],tileSize:256,maxzoom:17,
+  attribution:'מסלולים מסומנים: <a href="https://hiking.waymarkedtrails.org" target="_blank">Waymarked Trails</a>'};
+function setMarked(on){
+  if(on&&!markedFailed&&!map.getSource('marked')){map.addSource('marked',MARKED);map.addLayer({id:'trails-marked',type:'raster',source:'marked',minzoom:8,paint:{'raster-opacity':.9}},'found-line');}
+  if(!on&&map.getLayer('trails-marked')){map.removeLayer('trails-marked');map.removeSource('marked');}
+}
+toggler('b-trails',['trails-paths'],setMarked);
+map.on('error',e=>{
+  if(e.sourceId!=='marked'||markedFailed)return;
+  markedFailed=true;setMarked(false);refreshTerrain();
+  showMsg('שכבת המסלולים המסומנים לא זמינה כרגע. מוצגים השבילים מהמפה בלבד.');
+});
+
+/* ---------- search (OpenStreetMap Nominatim; one request per search, as its usage policy asks) ---------- */
+const TYPE_HE={city:'עיר',town:'עיירה',village:'יישוב',hamlet:'יישוב',suburb:'שכונה',neighbourhood:'שכונה',peak:'פסגה',hill:'גבעה',
+  ridge:'רכס',valley:'עמק',stream:'נחל',river:'נהר',wadi:'ואדי',spring:'מעיין',hiking:'מסלול הליכה',bicycle:'מסלול אופניים',
+  water:'מקום מים',lake:'אגם',cave_entrance:'מערה',viewpoint:'תצפית',nature_reserve:'שמורת טבע',national_park:'גן לאומי',
+  attraction:'אטרקציה',archaeological_site:'אתר עתיקות',cliff:'מצוק',crater:'מכתש',administrative:'אזור'};
+const results=$('results'),smsg=$('smsg');
+let searching=false;
+function showMsg(t){smsg.textContent=t;smsg.hidden=!t;}
+function clearFound(){map.getSource('found').setData({type:'FeatureCollection',features:[]});$('b-route').hidden=true;}
+$('b-route').onclick=clearFound;
+function pick(r){
+  results.hidden=true;showMsg('');
+  const g=r.geojson&&r.geojson.type!=='Point'?r.geojson:{type:'Point',coordinates:[+r.lon,+r.lat]};
+  map.getSource('found').setData({type:'Feature',properties:{},geometry:g});
+  $('b-route').hidden=false;
+  const [s,n,w,e]=r.boundingbox.map(Number);
+  if(g.type==='Point'||(n-s<0.01&&e-w<0.01))map.flyTo({center:[+r.lon,+r.lat],zoom:13.5,pitch:60,duration:2200});
+  else map.fitBounds([[w,s],[e,n]],{padding:{top:140,bottom:150,left:60,right:60},pitch:50,duration:2200,maxZoom:14});
+}
+$('sform').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const q=$('q').value.trim();if(!q||searching)return;
+  searching=true;results.hidden=true;showMsg('מחפש…');
+  try{
+    const u='https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q,format:'jsonv2','accept-language':'he',limit:'8',
+      polygon_geojson:'1',polygon_threshold:'0.0003',viewbox:'34.2,33.4,35.95,29.4',bounded:'0'});
+    const res=await fetch(u);if(!res.ok)throw new Error(res.status);
+    const list=await res.json();
+    results.textContent='';
+    if(!list.length){showMsg('לא נמצאו תוצאות. נסו שם אחר או כתיב אחר.');return;}
+    showMsg('');
+    for(const r of list){
+      const li=document.createElement('li'),b=document.createElement('button');b.type='button';
+      const parts=r.display_name.split(', ');
+      const n=document.createElement('span');n.className='rn';n.textContent=r.name||parts[0];
+      const d=document.createElement('span');d.className='rd';d.textContent=[TYPE_HE[r.type],parts.slice(1,3).join(', ')].filter(Boolean).join(' · ');
+      b.append(n,d);b.onclick=()=>pick(r);li.append(b);results.append(li);
+    }
+    results.hidden=false;
+  }catch(err){showMsg('החיפוש לא הצליח. בדקו את החיבור לאינטרנט ונסו שוב בעוד רגע.');}
+  finally{searching=false;}
+});
+$('q').addEventListener('input',()=>{if(!$('q').value){results.hidden=true;showMsg('');}});
 
 /* ---------- exact elevation from the terrain tiles (zoom 14, about 8 m per pixel) ---------- */
 const tileCache=new Map();
@@ -252,7 +399,7 @@ function addPin(lngLat){
 }
 function removePin(i){pins.splice(i,1)[0].marker.remove();render();}
 $('b-clear').onclick=()=>{while(pins.length)removePin(pins.length-1);};
-map.on('click',e=>addPin(e.lngLat));
+map.on('click',e=>{if(!results.hidden){results.hidden=true;return;}addPin(e.lngLat);});
 window.reliefMap=map;
 render();
 })();
