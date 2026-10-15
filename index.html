@@ -218,6 +218,7 @@ const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
 const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,road:'',satellite:false,sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
+let ROADPICK=EMPTY,ROADS=null,TRAILPICK=EMPTY;   // TRAILPICK: the picked marked trail (from OpenStreetMap);   // the picked road, whole (from roads.geojson, made by tools/build_roads.py)
 let REG=[],REG_BIG=[],REG_SUB=[],POIS=EMPTY,CTR=[],FOUND=EMPTY;   // REG = small regions first (they win a click), then the large ones
 const fc=f=>({type:'FeatureCollection',features:f});
 const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name,small:!!f.properties.kind},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
@@ -241,7 +242,7 @@ function buildStyle(){
     sources:{omt:M.vector,dem:{...dem},demShade:{...dem},
       regions:{type:'geojson',data:fc(REG)},regionLabels:{type:'geojson',data:labelsOf(REG)},
       countries:{type:'geojson',data:fc(CTR)},countryLabels:{type:'geojson',data:labelsOf(CTR)},
-      found:{type:'geojson',data:FOUND},pois:{type:'geojson',data:POIS},
+      found:{type:'geojson',data:FOUND},roadpick:{type:'geojson',data:ROADPICK},trailpick:{type:'geojson',data:TRAILPICK},pois:{type:'geojson',data:POIS},
       // satellite imagery streams from Esri, so it exists in global mode only
       ...(S.data==='global'?{sat:SAT}:{})},
     sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
@@ -289,6 +290,11 @@ function buildStyle(){
         filter:['in',['get','class'],['literal',['path','track']]],layout:{...hide,'line-join':'round'},
         paint:{'line-color':['match',['get','class'],'track','#e8d6a8','#ffd27a'],'line-opacity':.85,
           'line-width':['interpolate',['linear'],['zoom'],10,.6,15,2],'line-dasharray':[2,1.5]}},
+      // a picked marked trail, drawn whole in its own marking colour
+      {id:'trail-pick-case',type:'line',source:'trailpick',layout:{'line-join':'round','line-cap':'round'},
+        paint:{'line-color':['case',['==',['get','color'],'#222222'],'#ffffff','#14110b'],'line-width':['interpolate',['linear'],['zoom'],8,4,13,8,16,12]}},
+      {id:'trail-pick',type:'line',source:'trailpick',layout:{'line-join':'round','line-cap':'round'},
+        paint:{'line-color':['get','color'],'line-width':['interpolate',['linear'],['zoom'],8,2.2,13,4.5,16,7]}},
       {id:'found-line',type:'line',source:'found',filter:['!=',['geometry-type'],'Point'],layout:{'line-join':'round','line-cap':'round'},
         paint:{'line-color':['coalesce',['get','color'],'#ff8a3d'],'line-width':['interpolate',['linear'],['zoom'],6,2.5,13,5],'line-blur':.4}},
       {id:'found-point',type:'circle',source:'found',filter:['==',['geometry-type'],'Point'],
@@ -296,10 +302,8 @@ function buildStyle(){
       // a picked road (by its number): an invisible wide line to catch taps, and the bright highlight itself
       {id:'road-pick-hit',type:'line',source:'omt','source-layer':'transportation_name',minzoom:6,layout:{...hide},
         filter:['has','ref'],paint:{'line-color':'#000','line-opacity':.01,'line-width':14}},
-      {id:'road-pick-case',type:'line',source:'omt','source-layer':'transportation_name',layout:{...hide,'line-join':'round','line-cap':'round'},
-        filter:['==',['get','ref'],''],paint:{'line-color':'#1b0c05','line-width':['interpolate',['linear'],['zoom'],6,4,12,9,15,13]}},
-      {id:'road-pick',type:'line',source:'omt','source-layer':'transportation_name',layout:{...hide,'line-join':'round','line-cap':'round'},
-        filter:['==',['get','ref'],''],paint:{'line-color':'#ffe14d','line-width':['interpolate',['linear'],['zoom'],6,2.2,12,5.5,15,8.5]}},
+      {id:'road-pick-case',type:'line',source:'roadpick',layout:{...hide,'line-join':'round','line-cap':'round'},paint:{'line-color':'#1b0c05','line-width':['interpolate',['linear'],['zoom'],6,4,12,9,15,13]}},
+      {id:'road-pick',type:'line',source:'roadpick',layout:{...hide,'line-join':'round','line-cap':'round'},paint:{'line-color':'#ffe14d','line-width':['interpolate',['linear'],['zoom'],6,2.2,12,5.5,15,8.5]}},
       {id:'road-shields',type:'symbol',source:'omt','source-layer':'transportation_name',layout:{...hide,
           'symbol-placement':'line','symbol-spacing':['interpolate',['linear'],['zoom'],8,250,14,400],
           'text-field':['get','ref'],'text-font':FONTB,'text-size':11,
@@ -370,7 +374,7 @@ function apply(){
   ROAD_LAYERS.forEach(id=>vis(id,S.roads));
   // one road picked: it stands out, the others fade
   const pick=S.roads&&S.road;
-  ['road-pick','road-pick-case'].forEach(id=>map.setFilter(id,['==',['get','ref'],S.road||'\u0000']));
+  if(map.getSource('roadpick'))map.getSource('roadpick').setData(ROADPICK);
   map.setPaintProperty('roads-hl','line-opacity',pick?.25:1);
   map.setPaintProperty('roads-hl-case','line-opacity',pick?.15:.55);
   const own=['==',['get','ref'],S.road||'\u0000'];
@@ -384,6 +388,11 @@ function apply(){
   map.setFilter('region-dim',['all',['!',sel],['!',['has','kind']]]);map.setFilter('country-dim',['!',sel]);
   ['region-dim','country-dim'].forEach(id=>map.setPaintProperty(id,'fill-opacity',S.sel.size?.35:0));
   setMarked(S.trails);
+  // one trail picked: the other trails fade
+  const tp=TRAILPICK.features.length>0;
+  if(map.getSource('trailpick'))map.getSource('trailpick').setData(TRAILPICK);
+  map.setPaintProperty('trails-paths','line-opacity',tp?.3:.85);
+  if(map.getLayer('trails-marked'))map.setPaintProperty('trails-marked','raster-opacity',tp?.35:.9);
   setSun();
   refreshTerrain();
 }
@@ -412,8 +421,8 @@ $('ex-plus').onclick=()=>stepEx(1);
 $('ex').addEventListener('input',e=>{S.ex=+e.target.value;$('exv').textContent='×'+S.ex;map.setTerrain({source:'dem',exaggeration:S.ex});});
 $('b-sat').onclick=()=>{S.satellite=!S.satellite;press('b-sat',S.satellite);apply();};
 $('b-lbl').onclick=()=>{S.labels=!S.labels;press('b-lbl',S.labels);apply();};
-$('b-roads').onclick=()=>{S.roads=!S.roads;if(!S.roads)S.road='';press('b-roads',S.roads);apply();};
-$('b-trails').onclick=()=>{S.trails=!S.trails;press('b-trails',S.trails);apply();};
+$('b-roads').onclick=()=>{S.roads=!S.roads;if(!S.roads){S.road='';ROADPICK=EMPTY;}press('b-roads',S.roads);apply();};
+$('b-trails').onclick=()=>{S.trails=!S.trails;if(!S.trails)TRAILPICK=EMPTY;press('b-trails',S.trails);apply();};
 $('b-reset').onclick=()=>map.flyTo({...HOME,duration:1600});
 
 function setDataMode(m,first){
@@ -503,7 +512,7 @@ let markedFailed=false;
 const MARKED={type:'raster',tiles:['https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png'],tileSize:256,maxzoom:17,
   attribution:'מסלולים מסומנים: <a href="https://hiking.waymarkedtrails.org" target="_blank">Waymarked Trails</a>'};
 function setMarked(on){
-  if(on&&!markedFailed&&!map.getSource('marked')){map.addSource('marked',MARKED);map.addLayer({id:'trails-marked',type:'raster',source:'marked',minzoom:8,paint:{'raster-opacity':.9}},'found-line');}
+  if(on&&!markedFailed&&!map.getSource('marked')){map.addSource('marked',MARKED);map.addLayer({id:'trails-marked',type:'raster',source:'marked',minzoom:8,paint:{'raster-opacity':.9}},'trail-pick-case');}
   if(!on&&map.getLayer('trails-marked')){map.removeLayer('trails-marked');map.removeSource('marked');}
 }
 /* ---------- sun and moon over a whole day (24 h, every half hour).
@@ -825,13 +834,70 @@ function roadAt(pt){
   const f=map.queryRenderedFeatures(box,{layers:['road-shields','road-pick-hit']}).find(f=>f.properties.ref);
   return f?String(f.properties.ref):null;
 }
-map.on('click',e=>{if(!results.hidden){results.hidden=true;return;}
+async function pickRoad(ref){
+  S.road=ref;ROADPICK=EMPTY;
+  if(ref){
+    if(!ROADS)ROADS=await fetch(BASE+'roads.geojson').then(r=>r.json()).catch(()=>({features:[]}));
+    ROADPICK=fc(ROADS.features.filter(f=>f.properties.ref===ref));
+  }
+  apply();
+}
+/* marked hiking trails: tap near one (with "שבילים" on) and OpenStreetMap is asked which marked trails pass there */
+const TRAIL_COLORS={red:'#e8443a',blue:'#2f7fe0',green:'#2fae4a',black:'#222222',orange:'#ff8a3d',yellow:'#f2c230',purple:'#9b59d0',white:'#f4f4f4',brown:'#9a6b3c'};
+function trailColor(t){
+  if(/שביל ישראל/.test(t.name||'')||/israel national trail/i.test(t['name:en']||''))return TRAIL_COLORS.orange;
+  const c=((t['osmc:symbol']||'').split(':')[0]||t.colour||'').toLowerCase();
+  return TRAIL_COLORS[c]||(c.startsWith('#')?c:'#ff8a3d');
+}
+function km(lines){let d=0;for(const l of lines)for(let i=1;i<l.length;i++){const a=l[i-1],b=l[i];
+  d+=Math.hypot((b[0]-a[0])*Math.cos((a[1]+b[1])/2*Math.PI/180)*111.32,(b[1]-a[1])*110.57);}return d;}
+async function trailsAt(lngLat){
+  // search radius: about 15 screen pixels, at least 30 m
+  const m=Math.max(30,15*40075016*Math.cos(lngLat.lat*Math.PI/180)/(512*2**map.getZoom()));
+  const q=`[out:json][timeout:20];rel(around:${Math.round(m)},${lngLat.lat.toFixed(5)},${lngLat.lng.toFixed(5)})[route~"^(hiking|foot)$"];out geom tags;`;
+  const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q)});
+  if(!r.ok)throw new Error('overpass '+r.status);
+  const j=await r.json();
+  return (j.elements||[]).map(el=>{
+    const lines=(el.members||[]).filter(x=>x.type==='way'&&x.geometry).map(x=>x.geometry.map(p=>[p.lon,p.lat]));
+    const t=el.tags||{},color=trailColor(t);
+    return {id:el.id,name:t['name:he']||t.name||t['name:en']||'מסלול ללא שם',color,km:km(lines),
+      feature:{type:'Feature',properties:{color},geometry:{type:'MultiLineString',coordinates:lines}}};
+  }).filter(x=>x.feature.geometry.coordinates.length);
+}
+const kmTxt=k=>k<10?k.toFixed(1):String(Math.round(k));
+function pickTrail(t){
+  TRAILPICK=t?fc([t.feature]):EMPTY;apply();
+  showMsg(t?`${t.name} · ${kmTxt(t.km)} ק״מ. לחיצה במקום ריק מחזירה את כל השבילים.`:'');
+}
+function chooseTrail(list){
+  results.textContent='';
+  for(const t of list){
+    const li=document.createElement('li'),b=document.createElement('button'),n=document.createElement('span'),d=document.createElement('span'),dot=document.createElement('i');
+    n.className='rn';d.className='rd';dot.style.cssText=`display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-inline-end:6px`;
+    n.append(dot,t.name);d.textContent=`מסלול מסומן · ${kmTxt(t.km)} ק״מ`;
+    b.append(n,d);b.onclick=()=>{results.hidden=true;pickTrail(t);};li.append(b);results.append(li);
+  }
+  results.hidden=false;showMsg('כמה מסלולים עוברים כאן. בחרו אחד:');
+}
+async function onTrailTap(e){
+  const near=[[e.point.x-10,e.point.y-10],[e.point.x+10,e.point.y+10]];
+  if(TRAILPICK.features.length&&map.queryRenderedFeatures(near,{layers:['trail-pick']}).length){pickTrail(null);return true;}
+  showMsg('מחפש מסלולים מסומנים בנקודה…');
+  let list;
+  try{list=await trailsAt(e.lngLat);}catch(err){showMsg('לא הצלחתי לשאול את OpenStreetMap על מסלולים (צריך חיבור לאינטרנט).');return true;}
+  if(!list.length){showMsg('');if(TRAILPICK.features.length){pickTrail(null);return true;}return false;}
+  if(list.length===1)pickTrail(list[0]);else chooseTrail(list);
+  return true;
+}
+map.on('click',async e=>{if(!results.hidden){results.hidden=true;return;}
   const ref=roadAt(e.point);
   if(ref||S.road){
-    S.road=ref&&ref!==S.road?ref:'';apply();
+    await pickRoad(ref&&ref!==S.road?ref:'');
     showMsg(S.road?`כביש ${S.road} מודגש. לחיצה במקום ריק מחזירה את כל הכבישים.`:'');
     if(ref||!S.road)return;
   }
+  if(S.trails&&await onTrailTap(e))return;
   if(S.regions||S.countries){toggleSel(areaAt(e.lngLat),false);return;}
   addPin(e.lngLat);});
 window.reliefMap=map;
