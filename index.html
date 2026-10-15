@@ -213,9 +213,9 @@ const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
 const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,satellite:false,sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
-let REG=[],CTR=[],FOUND=EMPTY;
+let REG=[],REG_BIG=[],REG_SUB=[],POIS=EMPTY,CTR=[],FOUND=EMPTY;   // REG = small regions first (they win a click), then the large ones
 const fc=f=>({type:'FeatureCollection',features:f});
-const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
+const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name,small:!!f.properties.kind},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
 
 const SAT={type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:19,
   attribution:'לוויין: <a href="https://www.esri.com" target="_blank">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community'};
@@ -236,7 +236,7 @@ function buildStyle(){
     sources:{omt:M.vector,dem:{...dem},demShade:{...dem},
       regions:{type:'geojson',data:fc(REG)},regionLabels:{type:'geojson',data:labelsOf(REG)},
       countries:{type:'geojson',data:fc(CTR)},countryLabels:{type:'geojson',data:labelsOf(CTR)},
-      found:{type:'geojson',data:FOUND},
+      found:{type:'geojson',data:FOUND},pois:{type:'geojson',data:POIS},
       // satellite imagery streams from Esri, so it exists in global mode only
       ...(S.data==='global'?{sat:SAT}:{})},
     sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
@@ -259,10 +259,13 @@ function buildStyle(){
         paint:{'line-color':'#ffd166','line-width':['interpolate',['linear'],['zoom'],2,1.5,8,4]}},
       {id:'region-dim',type:'fill',source:'regions',layout:hide,paint:{'fill-color':'#05080a','fill-opacity':0}},
       {id:'region-sel',type:'fill',source:'regions',layout:hide,paint:{'fill-color':'#f3c45a','fill-opacity':.32}},
-      {id:'region-lines',type:'line',source:'regions',layout:{...hide,'line-join':'round'},
+      {id:'region-lines',type:'line',source:'regions',filter:['!',['has','kind']],layout:{...hide,'line-join':'round'},
         paint:{'line-color':'#f3d48a','line-opacity':.75,'line-width':['interpolate',['linear'],['zoom'],6,.8,11,2],'line-dasharray':[4,2]}},
       {id:'region-sel-line',type:'line',source:'regions',layout:{...hide,'line-join':'round'},
         paint:{'line-color':'#ffd166','line-width':['interpolate',['linear'],['zoom'],6,2.5,11,4.5]}},
+      // small regions (craters, valleys, single mountains) traced from the terrain by tools/build_subregions.py
+      {id:'sub-lines',type:'line',source:'regions',filter:['has','kind'],minzoom:7,layout:{...hide,'line-join':'round'},
+        paint:{'line-color':'#8fd8ff','line-opacity':.85,'line-width':['interpolate',['linear'],['zoom'],7,1,12,2.5]}},
       {id:'roads-major',type:'line',source:'omt','source-layer':'transportation',minzoom:8,
         filter:['in',['get','class'],['literal',['motorway','trunk','primary']]],
         paint:{'line-color':'#f2e6c9','line-opacity':['interpolate',['linear'],['zoom'],8,.18,12,.45],'line-width':['interpolate',['linear'],['zoom'],8,.5,14,2.5]}},
@@ -315,15 +318,23 @@ function buildStyle(){
       {id:'country-names',type:'symbol',source:'countryLabels',maxzoom:7,
         layout:{...hide,'text-field':['get','name'],'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],2,10,6,15],'text-max-width':7},
         paint:{'text-color':'#e8efe9','text-halo-color':'#0f1716','text-halo-width':1.6}},
-      {id:'region-names',type:'symbol',source:'regionLabels',maxzoom:11,
+      {id:'sub-names',type:'symbol',source:'regionLabels',minzoom:8.5,filter:['get','small'],
+        layout:{...hide,'text-field':['get','name'],'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],8.5,12,13,16]},
+        paint:{'text-color':'#bfe9ff','text-halo-color':'#0b1418','text-halo-width':1.6}},
+      // points of interest too small to outline (a lookout, a hill)
+      {id:'poi-dot',type:'circle',source:'pois',minzoom:9,paint:{'circle-radius':['interpolate',['linear'],['zoom'],9,3.5,14,6],'circle-color':'#ff8fc4','circle-stroke-color':'#1b0c12','circle-stroke-width':1.5}},
+      {id:'poi-names',type:'symbol',source:'pois',minzoom:10,
+        layout:{'text-field':['get','name'],'text-font':FONTB,'text-size':13,'text-anchor':'bottom','text-offset':[0,-.6]},
+        paint:{'text-color':'#ffd3e8','text-halo-color':'#1b0c12','text-halo-width':1.5}},
+      {id:'region-names',type:'symbol',source:'regionLabels',maxzoom:11,filter:['!',['get','small']],
         layout:{...hide,'text-field':['get','name'],'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],6,12,10,17],'text-letter-spacing':.12},
         paint:{'text-color':'#f3d48a','text-halo-color':'#15120a','text-halo-width':1.6,'text-opacity':.95}}
     ]
   };
 }
-const LABEL_LAYERS=['water-name','peaks','places-minor','places-town','places-city'];
+const LABEL_LAYERS=['water-name','peaks','places-minor','places-town','places-city','poi-dot','poi-names'];
 const ROAD_LAYERS=['roads-hl-case','roads-hl','road-shields'];
-const REGION_LAYERS=['region-dim','region-sel','region-lines','region-sel-line','region-names'];
+const REGION_LAYERS=['region-dim','region-sel','region-lines','region-sel-line','region-names','sub-lines','sub-names'];
 const COUNTRY_LAYERS=['country-dim','country-sel','country-lines','country-sel-line','country-names'];
 
 const map=new maplibregl.Map({container:'map',style:buildStyle(),...HOME,maxPitch:80,attributionControl:false});
@@ -349,7 +360,9 @@ function apply(){
   COUNTRY_LAYERS.forEach(id=>vis(id,S.countries));
   const sel=['in',['get','id'],['literal',[...S.sel]]];
   ['region-sel','region-sel-line','country-sel','country-sel-line'].forEach(id=>map.setFilter(id,sel));
-  ['region-dim','country-dim'].forEach(id=>{map.setFilter(id,['!',sel]);map.setPaintProperty(id,'fill-opacity',S.sel.size?.35:0);});
+  // only the large regions are dimmed (a small one lies inside a large one and would be dimmed twice)
+  map.setFilter('region-dim',['all',['!',sel],['!',['has','kind']]]);map.setFilter('country-dim',['!',sel]);
+  ['region-dim','country-dim'].forEach(id=>map.setPaintProperty(id,'fill-opacity',S.sel.size?.35:0));
   setMarked(S.trails);
   setSun();
   refreshTerrain();
@@ -404,17 +417,20 @@ setDataMode(S.data,true);
 const AREAS=new Map();
 function loadAreas(url,assign,btn,what){
   return fetch(url).then(r=>r.json()).then(d=>{assign(d.features);d.features.forEach(f=>AREAS.set(f.properties.id,f));
-    const set=()=>{if(url.startsWith('regions')){map.getSource('regions').setData(fc(REG));map.getSource('regionLabels').setData(labelsOf(REG));}
+    const set=()=>{if(url!=='countries.geojson'){REG=[...REG_SUB,...REG_BIG];map.getSource('regions').setData(fc(REG));map.getSource('regionLabels').setData(labelsOf(REG));}
       else{map.getSource('countries').setData(fc(CTR));map.getSource('countryLabels').setData(labelsOf(CTR));}refreshTerrain();};
     map.isStyleLoaded()?set():map.once('load',set);fillPicker();})
    .catch(()=>{$(btn).disabled=true;$(btn).title=`קובץ ה${what} לא נטען`;});
 }
-loadAreas('regions.geojson',f=>REG=f,'b-regions','אזורים');
+loadAreas('regions.geojson',f=>REG_BIG=f,'b-regions','אזורים');
+// small regions; the same file also holds the points of interest
+loadAreas('subregions.geojson',f=>{REG_SUB=f.filter(x=>x.geometry.type!=='Point');POIS=fc(f.filter(x=>x.geometry.type==='Point'));
+  const put=()=>map.getSource('pois')&&map.getSource('pois').setData(POIS);map.isStyleLoaded()?put():map.once('load',put);},'b-regions','אזורים');
 loadAreas('countries.geojson',f=>CTR=f,'b-countries','מדינות');
 const byName=(a,b)=>a.properties.name.localeCompare(b.properties.name,'he');
 function fillPicker(){
   const sel=$('addsel');sel.length=1;
-  for(const [on,list,label] of [[S.regions,REG,'אזורים בישראל'],[S.countries,CTR,'מדינות']]){
+  for(const [on,list,label] of [[S.regions,REG_BIG,'אזורים בישראל'],[S.regions,REG_SUB,'אזורים קטנים: מכתשים, בקעות והרים'],[S.countries,CTR,'מדינות']]){
     if(!on||!list.length)continue;
     const g=document.createElement('optgroup');g.label=label;
     [...list].sort(byName).forEach(f=>{if(S.sel.has(f.properties.id))return;const o=document.createElement('option');o.value=f.properties.id;o.textContent=f.properties.name;g.append(o);});
