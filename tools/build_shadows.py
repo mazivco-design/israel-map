@@ -90,8 +90,8 @@ def shadow(H, mpp, az, alt):
 
 def save(mask, path):
     im = Image.fromarray(np.where(mask, 1, 0).astype(np.uint8), "P")
-    im.putpalette([0, 0, 0, 0, 0, 0])
-    im.save(path, optimize=True, transparency=0)   # index 0 = clear, index 1 = black shadow
+    im.putpalette([0, 0, 0, 18, 26, 58])                # shadow is a deep blue, not pure black
+    im.save(path, optimize=True, transparency=0)   # index 0 = clear, index 1 = shadow
 
 
 def main():

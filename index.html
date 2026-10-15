@@ -486,7 +486,7 @@ function setSun(){
       const id='sun-'+h,src=map.getSource(id);
       if(src){if(src.url!==sunUrl(f,h))src.updateImage({url:sunUrl(f,h),coordinates:sunCoords(h)});}
       else{map.addSource(id,{type:'image',url:sunUrl(f,h),coordinates:sunCoords(h)});
-        map.addLayer({id,type:'raster',source:id,paint:{'raster-opacity':.5,'raster-fade-duration':0,'raster-resampling':'linear'}},'water');}
+        map.addLayer({id,type:'raster',source:id,paint:{'raster-opacity':.38,'raster-fade-duration':0,'raster-resampling':'linear'}},'river');}  // above the sea and lakes, so shade on water shows
     }
   }else{
     for(const k in SHADE_MULTI)map.setPaintProperty('shade',k,SHADE_MULTI[k]);
