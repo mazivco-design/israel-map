@@ -87,6 +87,12 @@ def shadow(H, mpp, az, alt):
     return ndimage.binary_opening(S, np.ones((2, 2), bool))
 
 
+def shrink(mask, f=2):
+    """half size in each direction (~150 m pixels): small enough for iPad graphics memory; a pixel is shade if most of its 4 are"""
+    h, w = mask.shape[0] // f * f, mask.shape[1] // f * f
+    return mask[:h, :w].reshape(h // f, f, w // f, f).mean(axis=(1, 3)) >= .5
+
+
 def save(mask, path):
     im = Image.fromarray(np.where(mask, 1, 0).astype(np.uint8), "P")
     im.putpalette([0, 0, 0, 18, 26, 58])                # shadow is a deep blue, not pure black
@@ -119,8 +125,8 @@ def main():
             name = f"{minute // 60:02d}{minute % 60:02d}"
             m = shadow(H, mpp, az, alt)
             m[:, :west_cut] = False      # west of 34°E the DEM has no data (a false cliff in Sinai)
-            save(m[:half], f"{OUT}/{key}/{name}-n.png")
-            save(m[half:], f"{OUT}/{key}/{name}-s.png")
+            save(shrink(m[:half]), f"{OUT}/{key}/{name}-n.png")
+            save(shrink(m[half:]), f"{OUT}/{key}/{name}-s.png")
             frames.append({"t": f"{minute // 60:02d}:{minute % 60:02d}", "f": name, "az": round(az, 1), "alt": round(alt, 1)})
             print(key, name, f"az={az:.0f} alt={alt:.1f} shade={m.mean():.2%}", flush=True)
         man["dates"][key] = {"y": yr, "m": mo, "d": da, "tz": tz, "frames": frames}

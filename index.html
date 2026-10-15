@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>תבליט ישראל</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Secular+One&family=Assistant:wght@400;600;700&display=swap">
@@ -18,7 +18,9 @@
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--fg);font-family:var(--body);overflow:hidden}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);overflow:hidden;touch-action:pan-x pan-y}
+/* the page itself never zooms (pinching is for the map); buttons get no double-tap zoom */
+button,input,select{touch-action:manipulation}
 #map{position:fixed;inset:0}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 #title{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px;padding:10px 14px;max-width:min(300px,calc(50vw - 18px));z-index:2}
@@ -177,6 +179,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 <script>
 (function(){
 const $=id=>document.getElementById(id);
+// iPad browsers ignore user-scalable=no: stop the page pinch gesture directly, so only the map zooms and the panels keep their size
+['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault(),{passive:false}));
+document.addEventListener('touchmove',e=>{if(e.touches.length>1&&!e.target.closest('#map'))e.preventDefault();},{passive:false});
 if(!window.maplibregl){document.body.insertAdjacentHTML('beforeend','<p style="position:fixed;inset:0;display:grid;place-items:center;color:#9db0a8">לא הצלחתי לטעון את ספריית המפה. בדקו את החיבור לאינטרנט ורעננו.</p>');return;}
 
 const BASE=location.href.replace(/[?#].*$/,'').replace(/[^/]*$/,'');
@@ -207,12 +212,12 @@ $('ramp').style.background='linear-gradient(to right,'+STOPS.map(([z,c])=>`${c} 
 maplibregl.setRTLTextPlugin(new URL('lib/mapbox-gl-rtl-text.js',location.href).href,true).catch(()=>{});
 
 const small=innerWidth<600;
-const HOME={center:[35.05,31.45],zoom:small?6.4:7.0,pitch:55,bearing:-15};
+const HOME={center:[35.05,31.45],zoom:small?6.6:7.25,pitch:55,bearing:60};   // looking north-east, from over the sea off Gaza and Sinai
 const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,satellite:false,sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,road:'',satellite:false,sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
 let REG=[],REG_BIG=[],REG_SUB=[],POIS=EMPTY,CTR=[],FOUND=EMPTY;   // REG = small regions first (they win a click), then the large ones
 const fc=f=>({type:'FeatureCollection',features:f});
 const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name,small:!!f.properties.kind},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
@@ -288,6 +293,13 @@ function buildStyle(){
         paint:{'line-color':['coalesce',['get','color'],'#ff8a3d'],'line-width':['interpolate',['linear'],['zoom'],6,2.5,13,5],'line-blur':.4}},
       {id:'found-point',type:'circle',source:'found',filter:['==',['geometry-type'],'Point'],
         paint:{'circle-radius':7,'circle-color':['coalesce',['get','color'],'#ff8a3d'],'circle-stroke-color':'#1b0c05','circle-stroke-width':2}},
+      // a picked road (by its number): an invisible wide line to catch taps, and the bright highlight itself
+      {id:'road-pick-hit',type:'line',source:'omt','source-layer':'transportation_name',minzoom:6,layout:{...hide},
+        filter:['has','ref'],paint:{'line-color':'#000','line-opacity':.01,'line-width':14}},
+      {id:'road-pick-case',type:'line',source:'omt','source-layer':'transportation_name',layout:{...hide,'line-join':'round','line-cap':'round'},
+        filter:['==',['get','ref'],''],paint:{'line-color':'#1b0c05','line-width':['interpolate',['linear'],['zoom'],6,4,12,9,15,13]}},
+      {id:'road-pick',type:'line',source:'omt','source-layer':'transportation_name',layout:{...hide,'line-join':'round','line-cap':'round'},
+        filter:['==',['get','ref'],''],paint:{'line-color':'#ffe14d','line-width':['interpolate',['linear'],['zoom'],6,2.2,12,5.5,15,8.5]}},
       {id:'road-shields',type:'symbol',source:'omt','source-layer':'transportation_name',layout:{...hide,
           'symbol-placement':'line','symbol-spacing':['interpolate',['linear'],['zoom'],8,250,14,400],
           'text-field':['get','ref'],'text-font':FONTB,'text-size':11,
@@ -333,7 +345,7 @@ function buildStyle(){
   };
 }
 const LABEL_LAYERS=['water-name','peaks','places-minor','places-town','places-city','poi-dot','poi-names'];
-const ROAD_LAYERS=['roads-hl-case','roads-hl','road-shields'];
+const ROAD_LAYERS=['roads-hl-case','roads-hl','road-shields','road-pick-hit','road-pick-case','road-pick'];
 const REGION_LAYERS=['region-dim','region-sel','region-lines','region-sel-line','region-names','sub-lines','sub-names'];
 const COUNTRY_LAYERS=['country-dim','country-sel','country-lines','country-sel-line','country-names'];
 
@@ -356,6 +368,14 @@ function apply(){
   LABEL_LAYERS.forEach(id=>vis(id,S.labels));
   vis('trails-paths',S.trails);
   ROAD_LAYERS.forEach(id=>vis(id,S.roads));
+  // one road picked: it stands out, the others fade
+  const pick=S.roads&&S.road;
+  ['road-pick','road-pick-case'].forEach(id=>map.setFilter(id,['==',['get','ref'],S.road||'\u0000']));
+  map.setPaintProperty('roads-hl','line-opacity',pick?.25:1);
+  map.setPaintProperty('roads-hl-case','line-opacity',pick?.15:.55);
+  const own=['==',['get','ref'],S.road||'\u0000'];
+  map.setPaintProperty('road-shields','icon-opacity',pick?['case',own,1,.3]:1);
+  map.setPaintProperty('road-shields','text-opacity',pick?['case',own,1,.3]:1);
   REGION_LAYERS.forEach(id=>vis(id,S.regions));
   COUNTRY_LAYERS.forEach(id=>vis(id,S.countries));
   const sel=['in',['get','id'],['literal',[...S.sel]]];
@@ -392,7 +412,7 @@ $('ex-plus').onclick=()=>stepEx(1);
 $('ex').addEventListener('input',e=>{S.ex=+e.target.value;$('exv').textContent='×'+S.ex;map.setTerrain({source:'dem',exaggeration:S.ex});});
 $('b-sat').onclick=()=>{S.satellite=!S.satellite;press('b-sat',S.satellite);apply();};
 $('b-lbl').onclick=()=>{S.labels=!S.labels;press('b-lbl',S.labels);apply();};
-$('b-roads').onclick=()=>{S.roads=!S.roads;press('b-roads',S.roads);apply();};
+$('b-roads').onclick=()=>{S.roads=!S.roads;if(!S.roads)S.road='';press('b-roads',S.roads);apply();};
 $('b-trails').onclick=()=>{S.trails=!S.trails;press('b-trails',S.trails);apply();};
 $('b-reset').onclick=()=>map.flyTo({...HOME,duration:1600});
 
@@ -620,24 +640,32 @@ async function loadSun(){
   return true;
 }
 // fetch every shadow frame of the day in the background so moving the slider is instant
-function preloadSun(){sunFrames().forEach(f=>['n','s'].forEach(h=>{const im=new Image();im.src=sunUrl(f,h);}));}
+// (fetch only fills the browser cache with the small compressed files; decoding them all at once would eat iPad memory)
+function preloadSun(){sunFrames().forEach(f=>['n','s'].forEach(h=>fetch(sunUrl(f,h)).catch(()=>{})));}
 function markSunDate(){
   document.querySelectorAll('#sundates button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===S.sunDate));
   $('sundate').textContent=(SUN_DAYS[S.sunDate]||[,''])[1];
 }
 function setSunDate(k){S.sunDate=k;markSunDate();preloadSun();showSunTime();setSun();refreshTerrain();}
-/* "run the day": half an hour per step, round and round until pressed again.
-   The next step waits until the map has drawn the previous one (and at least 0.35 s), so a slow device never piles up work. */
+/* "run the day": half an hour every 0.5 s, round and round until pressed again.
+   A step waits (up to 2 s) while the previous shadow image is still loading, so a slow device never piles up work. */
 let playT=null;
 function setPlay(on){
   clearTimeout(playT);playT=null;press('sun-play',on);$('sun-play').textContent=on?'⏸ עצירה':'▶ הרץ את היום';
   if(on){
-    const step=()=>{if(!playT)return;setSunI(S.sunI+1);
-      const t0=performance.now();
-      map.once('idle',()=>{if(playT)playT=setTimeout(step,Math.max(0,350-(performance.now()-t0)));});};
+    let waited=0;
+    const step=()=>{
+      if(!playT)return;
+      const busy=['sun-n','sun-s'].some(id=>map.getSource(id)&&!map.isSourceLoaded(id));
+      if(busy&&waited<2000){waited+=100;playT=setTimeout(step,100);return;}
+      waited=0;setSunI(S.sunI+1);playT=setTimeout(step,500);
+    };
     playT=setTimeout(step,0);
   }
 }
+// if the browser drops the map's graphics (it happens on iPads short of memory) stop the animation; MapLibre redraws when it comes back
+map.getCanvas().addEventListener('webglcontextlost',()=>{if(playT)setPlay(false);});
+map.getCanvas().addEventListener('webglcontextrestored',()=>{setTimeout(()=>{apply();refreshTerrain();},300);});
 $('sun-play').onclick=()=>setPlay(!playT);
 $('b-sun').onclick=async()=>{
   if(!S.sun&&!(await loadSun())){showMsg('קובץ הצללים לא נטען.');return;}
@@ -790,7 +818,20 @@ function readPin(P){
 }
 function removePin(i){pins.splice(i,1)[0].marker.remove();render();}
 $('b-clear').onclick=()=>{while(pins.length)removePin(pins.length-1);};
+// tap a road (its number or the line): highlight that road; tap it again, or anywhere off the roads, to undo
+function roadAt(pt){
+  if(!S.roads)return null;
+  const box=[[pt.x-10,pt.y-10],[pt.x+10,pt.y+10]];
+  const f=map.queryRenderedFeatures(box,{layers:['road-shields','road-pick-hit']}).find(f=>f.properties.ref);
+  return f?String(f.properties.ref):null;
+}
 map.on('click',e=>{if(!results.hidden){results.hidden=true;return;}
+  const ref=roadAt(e.point);
+  if(ref||S.road){
+    S.road=ref&&ref!==S.road?ref:'';apply();
+    showMsg(S.road?`כביש ${S.road} מודגש. לחיצה במקום ריק מחזירה את כל הכבישים.`:'');
+    if(ref||!S.road)return;
+  }
   if(S.regions||S.countries){toggleSel(areaAt(e.lngLat),false);return;}
   addPin(e.lngLat);});
 window.reliefMap=map;
