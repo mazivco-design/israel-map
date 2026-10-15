@@ -41,7 +41,10 @@ body{background:var(--bg);color:var(--fg);font-family:var(--body);overflow:hidde
 .ctl label{color:var(--muted);white-space:nowrap}
 input[type=range]{accent-color:var(--accent);width:120px}
 button.step{width:30px;height:30px;padding:0;font-size:1.1rem;line-height:1;font-weight:700}
-#exv{font-variant-numeric:tabular-nums;min-width:2.6em;font-weight:700}
+#exv,#sunv{font-variant-numeric:tabular-nums;min-width:2.6em;font-weight:700}
+#sunctl{flex:1 1 100%}
+#sunt{width:200px}
+#sunnote{color:var(--muted);font-size:.78rem}
 button{font:inherit;font-size:.86rem;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer}
 button:disabled{opacity:.4;cursor:not-allowed}
 button[aria-pressed=true]{background:var(--accent);color:#1b1607;border-color:var(--accent);font-weight:700}
@@ -81,7 +84,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .fchip button{border:none;padding:0 5px;font-size:.95rem;line-height:1;color:var(--muted)}
 #results button.on{background:rgba(255,138,61,.16)}
 #results button.on .rn::after{content:" ✓";color:#ff8a3d}
-@media (max-width:560px){#title h1{font-size:1.15rem}#title p{display:none}#title{max-width:calc(55vw - 18px)}input[type=range]{width:90px}#panel{gap:8px 10px;padding:8px 10px}#log{max-height:36%}}
+@media (max-width:560px){#sunt{width:130px}#title h1{font-size:1.15rem}#title p{display:none}#title{max-width:calc(55vw - 18px)}input[type=range]{width:90px}#panel{gap:8px 10px;padding:8px 10px}#log{max-height:36%}}
 </style>
 </head>
 <body>
@@ -136,6 +139,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <span id="exv">×2</span>
   </div>
   <div class="ctl">
+    <button id="b-sun" aria-pressed="false" title="צללים לפי מיקום השמש">שמש</button>
     <button id="b-sat" aria-pressed="false" title="תמונת לוויין (במצב עולמי)">לוויין</button>
     <button id="b-lbl" aria-pressed="true">שמות</button>
     <button id="b-roads" aria-pressed="false">כבישים</button>
@@ -143,6 +147,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <button id="b-regions" aria-pressed="false">אזורים</button>
     <button id="b-countries" aria-pressed="false">מדינות</button>
     <button id="b-reset">איפוס מבט</button>
+  </div>
+  <div class="ctl" id="sunctl" hidden>
+    <label for="sunt">שמש · 21 ביוני</label>
+    <button id="sun-minus" class="step" aria-label="חצי שעה אחורה">−</button>
+    <input id="sunt" type="range" min="0" max="0" step="1" value="0">
+    <button id="sun-plus" class="step" aria-label="חצי שעה קדימה">+</button>
+    <span id="sunv">—</span>
+    <span id="sunnote"></span>
   </div>
   <div class="ctl" id="selctl" hidden>
     <select id="addsel" aria-label="הוספה לבחירה"><option value="">הוספה לבחירה…</option></select>
@@ -196,13 +208,20 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,satellite:false,regions:false,countries:false,sel:new Set()};
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,satellite:false,sun:false,sunI:0,regions:false,countries:false,sel:new Set()};
 let REG=[],CTR=[],FOUND=EMPTY;
 const fc=f=>({type:'FeatureCollection',features:f});
 const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
 
 const SAT={type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:19,
   attribution:'לוויין: <a href="https://www.esri.com" target="_blank">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community'};
+// normal relief shading: soft light from several directions. In sun mode it is replaced by one light from the sun.
+const SHADE_MULTI={'hillshade-method':'multidirectional','hillshade-illumination-anchor':'viewport',
+  'hillshade-highlight-color':['rgba(255,255,255,0.32)','rgba(255,250,240,0.18)','rgba(255,255,255,0.12)','rgba(255,255,255,0.12)'],
+  'hillshade-shadow-color':['rgba(0,0,0,0.55)','rgba(0,0,0,0.35)','rgba(0,0,0,0.25)','rgba(0,0,0,0.25)'],
+  'hillshade-illumination-direction':[315,270,0,45],'hillshade-illumination-altitude':[35,40,40,45],
+  // no fades: a fade between the 4-light and 1-light values is not possible
+  'hillshade-highlight-color-transition':{duration:0},'hillshade-shadow-color-transition':{duration:0}};
 function buildStyle(){
   const M=SRC[S.data];
   const dem={type:'raster-dem',tiles:[M.dem],encoding:'terrarium',tileSize:256,maxzoom:M.demMax};
@@ -222,11 +241,7 @@ function buildStyle(){
       {id:'bg',type:'background',paint:{'background-color':'#4a4d4f'}},
       {id:'relief',type:'color-relief',source:'demShade',paint:{'color-relief-opacity':1,'color-relief-color':['interpolate',['linear'],['elevation'],...STOPS.flat()]}},
       ...(S.data==='global'?[{id:'satellite',type:'raster',source:'sat',layout:hide,paint:{'raster-fade-duration':150}}]:[]),
-      {id:'shade',type:'hillshade',source:'demShade',paint:{
-        'hillshade-method':'multidirectional',
-        'hillshade-highlight-color':['rgba(255,255,255,0.32)','rgba(255,250,240,0.18)','rgba(255,255,255,0.12)','rgba(255,255,255,0.12)'],
-        'hillshade-shadow-color':['rgba(0,0,0,0.55)','rgba(0,0,0,0.35)','rgba(0,0,0,0.25)','rgba(0,0,0,0.25)'],
-        'hillshade-illumination-direction':[315,270,0,45],'hillshade-illumination-altitude':[35,40,40,45]}},
+      {id:'shade',type:'hillshade',source:'demShade',paint:{...SHADE_MULTI}},
       {id:'water',type:'fill',source:'omt','source-layer':'water',paint:{'fill-color':'#2e5c7c'}},
       {id:'river',type:'line',source:'omt','source-layer':'waterway',minzoom:9,filter:['in',['get','class'],['literal',['river','stream']]],
         paint:{'line-color':'#4f8fb3','line-width':['interpolate',['linear'],['zoom'],9,.4,14,1.6],'line-opacity':.7}},
@@ -332,6 +347,7 @@ function apply(){
   ['region-sel','region-sel-line','country-sel','country-sel-line'].forEach(id=>map.setFilter(id,sel));
   ['region-dim','country-dim'].forEach(id=>{map.setFilter(id,['!',sel]);map.setPaintProperty(id,'fill-opacity',S.sel.size?.35:0);});
   setMarked(S.trails);
+  setSun();
   refreshTerrain();
 }
 map.on('load',apply);
@@ -450,6 +466,59 @@ function setMarked(on){
   if(on&&!markedFailed&&!map.getSource('marked')){map.addSource('marked',MARKED);map.addLayer({id:'trails-marked',type:'raster',source:'marked',minzoom:8,paint:{'raster-opacity':.9}},'found-line');}
   if(!on&&map.getLayer('trails-marked')){map.removeLayer('trails-marked');map.removeSource('marked');}
 }
+/* ---------- sun: cast shadows precomputed by tools/build_shadows.py (Israel only), slope light computed live ---------- */
+let SUN=null;                 // shadows/manifest.json once loaded
+const SUN_DATE='0621';
+function sunFrames(){return SUN?SUN.dates[SUN_DATE]:[];}
+function sunUrl(f,half){return BASE+`shadows/${SUN_DATE}/${f.f}-${half}.png`;}
+function sunCoords(half){const [W,S_,E,N]=SUN.bounds,m=SUN.split;
+  return half==='n'?[[W,N],[E,N],[E,m],[W,m]]:[[W,m],[E,m],[E,S_],[W,S_]];}
+function setSun(){
+  if(!map.getLayer('shade'))return;
+  const f=S.sun&&sunFrames()[S.sunI];
+  if(f){
+    // one light from where the sun really is; slopes facing away from it go dark
+    const P={'hillshade-method':'standard','hillshade-illumination-anchor':'map','hillshade-illumination-direction':f.az,
+      // below ~15° flat ground would turn almost black; the low sun is shown by the long cast shadows instead
+      'hillshade-illumination-altitude':Math.max(f.alt,15),'hillshade-highlight-color':'rgba(255,240,210,0.30)','hillshade-shadow-color':'rgba(10,14,30,0.6)'};
+    for(const k in P)map.setPaintProperty('shade',k,P[k]);
+    for(const h of ['n','s']){
+      const id='sun-'+h,src=map.getSource(id);
+      if(src){if(src.url!==sunUrl(f,h))src.updateImage({url:sunUrl(f,h),coordinates:sunCoords(h)});}
+      else{map.addSource(id,{type:'image',url:sunUrl(f,h),coordinates:sunCoords(h)});
+        map.addLayer({id,type:'raster',source:id,paint:{'raster-opacity':.5,'raster-fade-duration':0,'raster-resampling':'linear'}},'water');}
+    }
+  }else{
+    for(const k in SHADE_MULTI)map.setPaintProperty('shade',k,SHADE_MULTI[k]);
+    for(const h of ['n','s'])if(map.getLayer('sun-'+h)){map.removeLayer('sun-'+h);map.removeSource('sun-'+h);}
+  }
+}
+// a new shadow image is drawn on the 3D ground only after the draped texture is refreshed
+map.on('sourcedata',e=>{if(e.sourceId&&e.sourceId.startsWith('sun-')&&e.isSourceLoaded)refreshTerrain();});
+function showSunTime(){const f=sunFrames()[S.sunI];$('sunv').textContent=f?f.t:'—';
+  $('sunnote').textContent=f?`גובה השמש ${Math.round(f.alt)}°`:'';}
+function setSunI(i){const n=sunFrames().length;S.sunI=Math.max(0,Math.min(n-1,i));$('sunt').value=S.sunI;showSunTime();setSun();refreshTerrain();}
+async function loadSun(){
+  if(SUN)return true;
+  try{const r=await fetch(BASE+'shadows/manifest.json');if(!r.ok)throw 0;SUN=await r.json();}catch(e){return false;}
+  const fr=sunFrames();$('sunt').max=fr.length-1;
+  // start at the current hour of the day when the sun is up, otherwise at 9:00
+  const now=new Date(),hm=String(now.getHours()).padStart(2,'0')+':'+(now.getMinutes()<30?'00':'30');
+  let i=fr.findIndex(f=>f.t===hm);if(i<0)i=fr.findIndex(f=>f.t==='09:00');S.sunI=Math.max(0,i);
+  // fetch every frame in the background so moving the slider is instant
+  fr.forEach(f=>['n','s'].forEach(h=>{const im=new Image();im.src=sunUrl(f,h);}));
+  return true;
+}
+$('b-sun').onclick=async()=>{
+  if(!S.sun&&!(await loadSun())){showMsg('קובץ הצללים לא נטען.');return;}
+  S.sun=!S.sun;press('b-sun',S.sun);$('sunctl').hidden=!S.sun;
+  if(S.sun){$('sunt').value=S.sunI;showSunTime();}
+  apply();
+};
+$('sunt').addEventListener('input',e=>setSunI(+e.target.value));
+$('sun-minus').onclick=()=>setSunI(S.sunI-1);
+$('sun-plus').onclick=()=>setSunI(S.sunI+1);
+
 map.on('error',e=>{
   if(e.sourceId!=='marked'||markedFailed)return;
   markedFailed=true;setMarked(false);refreshTerrain();
