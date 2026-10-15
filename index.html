@@ -43,6 +43,7 @@ input[type=range]{accent-color:var(--accent);width:120px}
 button.step{width:30px;height:30px;padding:0;font-size:1.1rem;line-height:1;font-weight:700}
 #exv{font-variant-numeric:tabular-nums;min-width:2.6em;font-weight:700}
 button{font:inherit;font-size:.86rem;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}
 button[aria-pressed=true]{background:var(--accent);color:#1b1607;border-color:var(--accent);font-weight:700}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
 .seg button{border:none;border-radius:0}
@@ -135,6 +136,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <span id="exv">×2</span>
   </div>
   <div class="ctl">
+    <button id="b-sat" aria-pressed="false" title="תמונת לוויין (במצב עולמי)">לוויין</button>
     <button id="b-lbl" aria-pressed="true">שמות</button>
     <button id="b-roads" aria-pressed="false">כבישים</button>
     <button id="b-trails" aria-pressed="false">שבילים</button>
@@ -194,11 +196,13 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,regions:false,countries:false,sel:new Set()};
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,satellite:false,regions:false,countries:false,sel:new Set()};
 let REG=[],CTR=[],FOUND=EMPTY;
 const fc=f=>({type:'FeatureCollection',features:f});
 const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
 
+const SAT={type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:19,
+  attribution:'לוויין: <a href="https://www.esri.com" target="_blank">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community'};
 function buildStyle(){
   const M=SRC[S.data];
   const dem={type:'raster-dem',tiles:[M.dem],encoding:'terrarium',tileSize:256,maxzoom:M.demMax};
@@ -209,12 +213,15 @@ function buildStyle(){
     sources:{omt:M.vector,dem:{...dem},demShade:{...dem},
       regions:{type:'geojson',data:fc(REG)},regionLabels:{type:'geojson',data:labelsOf(REG)},
       countries:{type:'geojson',data:fc(CTR)},countryLabels:{type:'geojson',data:labelsOf(CTR)},
-      found:{type:'geojson',data:FOUND}},
+      found:{type:'geojson',data:FOUND},
+      // satellite imagery streams from Esri, so it exists in global mode only
+      ...(S.data==='global'?{sat:SAT}:{})},
     sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
     terrain:{source:'dem',exaggeration:S.ex},
     layers:[
       {id:'bg',type:'background',paint:{'background-color':'#4a4d4f'}},
       {id:'relief',type:'color-relief',source:'demShade',paint:{'color-relief-opacity':1,'color-relief-color':['interpolate',['linear'],['elevation'],...STOPS.flat()]}},
+      ...(S.data==='global'?[{id:'satellite',type:'raster',source:'sat',layout:hide,paint:{'raster-fade-duration':150}}]:[]),
       {id:'shade',type:'hillshade',source:'demShade',paint:{
         'hillshade-method':'multidirectional',
         'hillshade-highlight-color':['rgba(255,255,255,0.32)','rgba(255,250,240,0.18)','rgba(255,255,255,0.12)','rgba(255,255,255,0.12)'],
@@ -311,7 +318,10 @@ function refreshTerrain(){try{map.terrain&&map.terrain.sourceCache.freeRtt();}ca
 function apply(){
   if(!map.getLayer('bg'))return;
   const vis=(id,on)=>{if(map.getLayer(id))map.setLayoutProperty(id,'visibility',on?'visible':'none');};
-  vis('relief',S.color==='hyp');
+  const sat=S.satellite&&S.data==='global';
+  vis('satellite',sat);
+  vis('relief',S.color==='hyp'&&!sat);
+  $('legend').hidden=S.color!=='hyp'||sat;
   map.setPaintProperty('bg','background-color',S.color==='hyp'?'#4a4d4f':'#4d5053');
   LABEL_LAYERS.forEach(id=>vis(id,S.labels));
   vis('trails-paths',S.trails);
@@ -347,6 +357,7 @@ function stepEx(dir){const el=$('ex'),st=+el.step||.5;el.value=Math.min(+el.max,
 $('ex-minus').onclick=()=>stepEx(-1);
 $('ex-plus').onclick=()=>stepEx(1);
 $('ex').addEventListener('input',e=>{S.ex=+e.target.value;$('exv').textContent='×'+S.ex;map.setTerrain({source:'dem',exaggeration:S.ex});});
+$('b-sat').onclick=()=>{S.satellite=!S.satellite;press('b-sat',S.satellite);apply();};
 $('b-lbl').onclick=()=>{S.labels=!S.labels;press('b-lbl',S.labels);apply();};
 $('b-roads').onclick=()=>{S.roads=!S.roads;press('b-roads',S.roads);apply();};
 $('b-trails').onclick=()=>{S.trails=!S.trails;press('b-trails',S.trails);apply();};
@@ -355,6 +366,9 @@ $('b-reset').onclick=()=>map.flyTo({...HOME,duration:1600});
 function setDataMode(m,first){
   S.data=m;store.set('dataMode',m);
   press('m-local',m==='local');press('m-global',m==='global');
+  // satellite needs the external service: off and disabled in local mode
+  if(m==='local'){S.satellite=false;press('b-sat',false);}
+  $('b-sat').disabled=m==='local';
   if(first)return;
   markedFailed=false;
   map.setStyle(buildStyle(),{diff:false});
