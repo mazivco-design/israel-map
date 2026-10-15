@@ -8,7 +8,7 @@ where the terrain gives no edge (a crater's outlet canyon, a valley that opens i
 Points of interest (too small to outline) are listed in POIS.
 
 Output: subregions.geojson (polygons + points), properties id, name, kind, area (km², polygons), lx, ly (label).
-Run: python tools/build_subregions.py
+Run: python tools/build_subregions.py      (OUT=path writes elsewhere, e.g. a draft for review)
 """
 import json, math, os
 import numpy as np, mercantile, rasterio.features
@@ -35,6 +35,15 @@ REGIONS = [
          clip=[(35.22, 32.795), (35.22, 32.85), (35.43, 32.85), (35.43, 32.78), (35.31, 32.785)]),
     dict(id="s_tabor", name="הר תבור", kind="above", seed=(35.39, 32.687), level=250,
          clip=[(35.35, 32.66), (35.35, 32.71), (35.43, 32.71), (35.43, 32.66)]),
+    dict(id="s_hula", name="עמק החולה", kind="below", seed=(35.615, 33.10), level=130,
+         clip=[(35.55, 33.02), (35.55, 33.25), (35.70, 33.25), (35.70, 33.02)]),   # south: the valley ends at the Rosh Pina sill
+    # the Gilboa runs into the Samaria hills in the south-west; the clip line there is a judgment call
+    dict(id="s_gilboa", name="רכס הגלבוע", kind="above", seed=(35.42, 32.48), level=150,
+         clip=[(35.33, 32.535), (35.40, 32.56), (35.48, 32.48), (35.48, 32.385), (35.42, 32.385), (35.33, 32.47)]),
+    dict(id="s_meron", name="הר מירון", kind="above", seed=(35.41, 32.995), level=850,
+         clip=[(35.30, 32.90), (35.30, 33.08), (35.50, 33.08), (35.50, 32.90)]),
+    dict(id="s_moreh", name="גבעת המורה", kind="above", seed=(35.37, 32.62), level=200,
+         clip=[(35.28, 32.56), (35.28, 32.68), (35.46, 32.68), (35.46, 32.56)]),
 ]
 POIS = [
     dict(id="p_gamal", name="הר גמל", kind="poi", at=(34.7966, 30.6038), note="תצפית על מכתש רמון"),
@@ -117,7 +126,7 @@ def main():
         return [rnd(v) for v in x] if isinstance(x, (list, tuple)) else round(x, 5) if isinstance(x, float) else x
     for f in feats:
         f["geometry"]["coordinates"] = rnd(f["geometry"]["coordinates"])
-    json.dump({"type": "FeatureCollection", "features": feats}, open("subregions.geojson", "w"), ensure_ascii=False, separators=(",", ":"))
+    json.dump({"type": "FeatureCollection", "features": feats}, open(os.environ.get("OUT", "subregions.geojson"), "w"), ensure_ascii=False, separators=(",", ":"))
 
 
 if __name__ == "__main__":
