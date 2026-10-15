@@ -523,9 +523,9 @@ function lightAt(sky){
   let veil=[0,0,0],op=0,light='sun';
   if(a>=6){op=0;}
   else if(a>=0){veil=GOLD;op=.16*(1-a/6);}                                 // golden hour
-  else if(a>=-6){const t=-a/6;veil=mix(DUSK,NIGHT,t);op=.28+.42*t;}         // sunset / dawn glow
-  else{const t=clamp01((-a-6)/12);veil=NIGHT;op=.72+.14*t;light='moon';}     // night, darker until -18°
-  if(light==='moon')op-=.25*moonGlow;                                       // a bright high moon lifts the dark
+  else if(a>=-6){const t=-a/6;veil=mix(DUSK,NIGHT,t);op=.28+.52*t;}         // sunset / dawn glow
+  else{const t=clamp01((-a-6)/12);veil=NIGHT;op=.82+.11*t;light='moon';}     // night, darker until -18°
+  if(light==='moon')op-=.2*moonGlow;                                       // a bright high moon lifts the dark
   return {veil,op,light,moonGlow};
 }
 const WORLD={type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[[[-180,-85],[180,-85],[180,85],[-180,85],[-180,-85]]]}};
@@ -543,6 +543,7 @@ function setSun(){
   }else for(const h of ['n','s'])if(map.getLayer('sun-'+h)){map.removeLayer('sun-'+h);map.removeSource('sun-'+h);}
   if(!on){
     for(const k in SHADE_MULTI)map.setPaintProperty('shade',k,SHADE_MULTI[k]);
+    if(map.getLayer('moonlit'))map.removeLayer('moonlit');
     if(map.getLayer('night')){map.removeLayer('night');map.removeSource('night');}
     return;
   }
@@ -550,7 +551,8 @@ function setSun(){
   // slope shading from one light; below ~15° flat ground would turn almost black, the low light shows in the long shadows instead
   let P;
   if(L.light==='sun')P={dir:sky.sun.az,alt:Math.max(sky.sun.alt,15),hi:'rgba(255,240,210,0.30)',sh:'rgba(10,14,30,0.6)'};
-  else if(sky.moon.alt>0)P={dir:sky.moon.az,alt:Math.max(sky.moon.alt,15),hi:`rgba(200,215,255,${(.32*L.moonGlow).toFixed(3)})`,sh:'rgba(0,2,12,0.55)'};
+  // moonlight: silver on the slopes facing the moon, deep dark on the others
+  else if(sky.moon.alt>0)P={dir:sky.moon.az,alt:Math.max(sky.moon.alt,10),hi:`rgba(215,228,255,${(.7*L.moonGlow).toFixed(3)})`,sh:`rgba(0,2,12,${(.4+.4*L.moonGlow).toFixed(3)})`};
   else P={dir:315,alt:45,hi:'rgba(0,0,0,0)',sh:'rgba(0,2,12,0.3)'};   // no moon: only a faint relief
   const Q={'hillshade-method':'standard','hillshade-illumination-anchor':'map','hillshade-illumination-direction':P.dir,
     'hillshade-illumination-altitude':P.alt,'hillshade-highlight-color':P.hi,'hillshade-shadow-color':P.sh};
@@ -560,6 +562,16 @@ function setSun(){
   if(!map.getLayer('night'))map.addLayer({id:'night',type:'fill',source:'night',paint:{'fill-color':'#000','fill-opacity':0,'fill-opacity-transition':{duration:0},'fill-color-transition':{duration:0}}},'river');
   map.setPaintProperty('night','fill-color',rgba(L.veil,1));
   map.setPaintProperty('night','fill-opacity',Math.max(0,L.op));
+  // moonlight is painted over the dark veil, so moon-facing slopes glow silver out of the night.
+  // A high moon lights everything evenly; a low moon lights only the slopes that face it.
+  const moonOn=L.light==='moon'&&sky.moon.alt>0&&L.moonGlow>.02;
+  if(moonOn){
+    if(!map.getLayer('moonlit'))map.addLayer({id:'moonlit',type:'hillshade',source:'demShade',paint:{'hillshade-method':'basic','hillshade-illumination-anchor':'map',
+      'hillshade-shadow-color':'rgba(0,0,0,0)','hillshade-accent-color':'rgba(0,0,0,0)','hillshade-highlight-color':'rgba(0,0,0,0)','hillshade-highlight-color-transition':{duration:0}}},'river');
+    map.setPaintProperty('moonlit','hillshade-illumination-direction',sky.moon.az);
+    map.setPaintProperty('moonlit','hillshade-illumination-altitude',Math.max(sky.moon.alt,5));
+    map.setPaintProperty('moonlit','hillshade-highlight-color',`rgba(200,216,255,${(.3*L.moonGlow).toFixed(3)})`);
+  }else if(map.getLayer('moonlit'))map.removeLayer('moonlit');
 }
 // a new shadow image is drawn on the 3D ground only after the draped texture is refreshed
 map.on('sourcedata',e=>{if(e.sourceId&&e.sourceId.startsWith('sun-')&&e.isSourceLoaded)refreshTerrain();});
@@ -598,11 +610,17 @@ function markSunDate(){
   $('sundate').textContent=(SUN_DAYS[S.sunDate]||[,''])[1];
 }
 function setSunDate(k){S.sunDate=k;markSunDate();preloadSun();showSunTime();setSun();refreshTerrain();}
-/* "run the day": half an hour every 0.4 s, round and round until pressed again */
+/* "run the day": half an hour per step, round and round until pressed again.
+   The next step waits until the map has drawn the previous one (and at least 0.35 s), so a slow device never piles up work. */
 let playT=null;
 function setPlay(on){
-  clearInterval(playT);playT=null;press('sun-play',on);$('sun-play').textContent=on?'⏸ עצירה':'▶ הרץ את היום';
-  if(on)playT=setInterval(()=>setSunI(S.sunI+1),400);
+  clearTimeout(playT);playT=null;press('sun-play',on);$('sun-play').textContent=on?'⏸ עצירה':'▶ הרץ את היום';
+  if(on){
+    const step=()=>{if(!playT)return;setSunI(S.sunI+1);
+      const t0=performance.now();
+      map.once('idle',()=>{if(playT)playT=setTimeout(step,Math.max(0,350-(performance.now()-t0)));});};
+    playT=setTimeout(step,0);
+  }
 }
 $('sun-play').onclick=()=>setPlay(!playT);
 $('b-sun').onclick=async()=>{
