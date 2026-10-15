@@ -1,3 +1,4 @@
 .dem-cache/
 data/
 planetiler.jar
+__pycache__/
