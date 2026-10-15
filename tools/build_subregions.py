@@ -29,7 +29,7 @@ REGIONS = [
                (35.02, 30.88), (34.95, 30.86)]),
     dict(id="s_katan", name="המכתש הקטן", kind="crater", seed=(35.19, 30.955), smin=16,
          clip=[(35.165, 30.93), (35.17, 30.985), (35.195, 30.995), (35.215, 30.985), (35.22, 30.94), (35.205, 30.925)]),
-    dict(id="s_zin", name="בקעת צין", kind="below", seed=(34.95, 30.84), level=460,
+    dict(id="s_zin", name="בקעת צין", kind="below", seed=(34.95, 30.84), level=390,
          clip=[(34.74, 30.75), (34.74, 30.88), (35.08, 30.91), (35.12, 30.88), (35.06, 30.80), (35.0, 30.75)]),
     dict(id="s_netofa", name="בקעת בית נטופה", kind="below", seed=(35.32, 32.805), level=170,
          clip=[(35.22, 32.795), (35.22, 32.85), (35.43, 32.85), (35.43, 32.78), (35.31, 32.785)]),
@@ -78,7 +78,12 @@ def region_mask(R, H, to_px):
         return ndimage.binary_fill_holes(ndimage.binary_closing(M, iterations=4))
     if R["kind"] == "below":
         M = comp(ndimage.binary_opening((H < R["level"]) & clip, iterations=3))
-        return ndimage.binary_fill_holes(ndimage.binary_closing(M, iterations=3))
+        # fill only small holes: a hill or ridge rising inside the valley stays out of it
+        M = ndimage.binary_closing(M, iterations=3)
+        holes, n = ndimage.label(ndimage.binary_fill_holes(M) & ~M)
+        sizes = ndimage.sum(np.ones_like(M), holes, range(1, n + 1))
+        small = np.isin(holes, 1 + np.nonzero(sizes < 1e6 / 33 ** 2)[0])   # under ~1 km²
+        return M | small
     return ndimage.binary_fill_holes(comp((H > R["level"]) & clip))
 
 
