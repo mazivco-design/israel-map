@@ -40,6 +40,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--body);overflow:hidde
 .ctl{display:flex;align-items:center;gap:8px;font-size:.9rem;flex-wrap:wrap}
 .ctl label{color:var(--muted);white-space:nowrap}
 input[type=range]{accent-color:var(--accent);width:120px}
+button.step{width:30px;height:30px;padding:0;font-size:1.1rem;line-height:1;font-weight:700}
 #exv{font-variant-numeric:tabular-nums;min-width:2.6em;font-weight:700}
 button{font:inherit;font-size:.86rem;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer}
 button[aria-pressed=true]{background:var(--accent);color:#1b1607;border-color:var(--accent);font-weight:700}
@@ -128,7 +129,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   </div>
   <div class="ctl">
     <label for="ex">הגזמה אנכית</label>
+    <button id="ex-minus" class="step" aria-label="הקטנת ההגזמה">−</button>
     <input id="ex" type="range" min="1" max="6" step="0.5" value="2">
+    <button id="ex-plus" class="step" aria-label="הגדלת ההגזמה">+</button>
     <span id="exv">×2</span>
   </div>
   <div class="ctl">
@@ -339,6 +342,10 @@ function press(id,on){$(id).setAttribute('aria-pressed',on);}
 function setColor(c){S.color=c;press('c-hyp',c==='hyp');press('c-uni',c==='uni');$('legend').hidden=c!=='hyp';apply();}
 $('c-hyp').onclick=()=>setColor('hyp');
 $('c-uni').onclick=()=>setColor('uni');
+// minus / plus move the slider one step and reuse its input handler
+function stepEx(dir){const el=$('ex'),st=+el.step||.5;el.value=Math.min(+el.max,Math.max(+el.min,+el.value+dir*st));el.dispatchEvent(new Event('input'));}
+$('ex-minus').onclick=()=>stepEx(-1);
+$('ex-plus').onclick=()=>stepEx(1);
 $('ex').addEventListener('input',e=>{S.ex=+e.target.value;$('exv').textContent='×'+S.ex;map.setTerrain({source:'dem',exaggeration:S.ex});});
 $('b-lbl').onclick=()=>{S.labels=!S.labels;press('b-lbl',S.labels);apply();};
 $('b-roads').onclick=()=>{S.roads=!S.roads;press('b-roads',S.roads);apply();};
