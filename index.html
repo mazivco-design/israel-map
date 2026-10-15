@@ -289,7 +289,7 @@ function buildStyle(){
       {id:'trails-paths',type:'line',source:'omt','source-layer':'transportation',minzoom:10,
         filter:['in',['get','class'],['literal',['path','track']]],layout:{...hide,'line-join':'round'},
         paint:{'line-color':['match',['get','class'],'track','#e8d6a8','#ffd27a'],'line-opacity':.85,
-          'line-width':['interpolate',['linear'],['zoom'],10,.6,15,2],'line-dasharray':[2,1.5]}},
+          'line-width':['interpolate',['linear'],['zoom'],10,.8,13,2,16,4.5],'line-dasharray':[2,1.5]}},
       // a picked marked trail, drawn whole in its own marking colour
       {id:'trail-pick-case',type:'line',source:'trailpick',layout:{'line-join':'round','line-cap':'round'},
         paint:{'line-color':['case',['==',['get','color'],'#222222'],'#ffffff','#14110b'],'line-width':['interpolate',['linear'],['zoom'],8,4,13,8,16,12]}},
@@ -509,7 +509,7 @@ function areaAt(lngLat){
 /* marked hiking routes come from Waymarked Trails. The layer is only added while trails are on,
    and removed for good if its server refuses the tiles, so a failure there never affects the rest of the map. */
 let markedFailed=false;
-const MARKED={type:'raster',tiles:['https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png'],tileSize:256,maxzoom:17,
+const MARKED={type:'raster',tiles:['https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png'],tileSize:512,maxzoom:17,   // 512: each tile drawn twice as big, so the marked lines stay bold when zoomed in
   attribution:'מסלולים מסומנים: <a href="https://hiking.waymarkedtrails.org" target="_blank">Waymarked Trails</a>'};
 function setMarked(on){
   if(on&&!markedFailed&&!map.getSource('marked')){map.addSource('marked',MARKED);map.addLayer({id:'trails-marked',type:'raster',source:'marked',minzoom:8,paint:{'raster-opacity':.9}},'trail-pick-case');}
@@ -851,13 +851,25 @@ function trailColor(t){
 }
 function km(lines){let d=0;for(const l of lines)for(let i=1;i<l.length;i++){const a=l[i-1],b=l[i];
   d+=Math.hypot((b[0]-a[0])*Math.cos((a[1]+b[1])/2*Math.PI/180)*111.32,(b[1]-a[1])*110.57);}return d;}
+// several public Overpass servers; the first that answers wins (each is often busy)
+const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];
+async function overpass(q){
+  let last='';
+  for(const url of OVERPASS){
+    const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),15000);
+    try{const r=await fetch(url+'?data='+encodeURIComponent(q),{signal:ctl.signal});clearTimeout(t);
+      if(r.ok)return await r.json();last=url.split('/')[2]+' '+r.status;}
+    catch(e){clearTimeout(t);last=url.split('/')[2]+' '+(e.name==='AbortError'?'timeout':e.message);}
+  }
+  throw new Error(last);
+}
 async function trailsAt(lngLat){
-  // search radius: about 15 screen pixels, at least 30 m
-  const m=Math.max(30,15*40075016*Math.cos(lngLat.lat*Math.PI/180)/(512*2**map.getZoom()));
-  const q=`[out:json][timeout:20];rel(around:${Math.round(m)},${lngLat.lat.toFixed(5)},${lngLat.lng.toFixed(5)})[route~"^(hiking|foot)$"];out geom tags;`;
-  const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q)});
-  if(!r.ok)throw new Error('overpass '+r.status);
-  const j=await r.json();
+  // search radius: about 22 screen pixels (a finger), at least 40 m.
+  // First the paths near the tap, then the marked routes those paths belong to.
+  const m=Math.max(40,22*40075016*Math.cos(lngLat.lat*Math.PI/180)/(512*2**map.getZoom()));
+  const at=`${Math.round(m)},${lngLat.lat.toFixed(5)},${lngLat.lng.toFixed(5)}`;
+  const q=`[out:json][timeout:25];(way(around:${at})[highway];)->.w;(rel(bw.w)[route~"^(hiking|foot)$"];rel(around:${at})[route~"^(hiking|foot)$"];);out geom tags;`;
+  const j=await overpass(q);
   return (j.elements||[]).map(el=>{
     const lines=(el.members||[]).filter(x=>x.type==='way'&&x.geometry).map(x=>x.geometry.map(p=>[p.lon,p.lat]));
     const t=el.tags||{},color=trailColor(t);
@@ -885,8 +897,9 @@ async function onTrailTap(e){
   if(TRAILPICK.features.length&&map.queryRenderedFeatures(near,{layers:['trail-pick']}).length){pickTrail(null);return true;}
   showMsg('מחפש מסלולים מסומנים בנקודה…');
   let list;
-  try{list=await trailsAt(e.lngLat);}catch(err){showMsg('לא הצלחתי לשאול את OpenStreetMap על מסלולים (צריך חיבור לאינטרנט).');return true;}
-  if(!list.length){showMsg('');if(TRAILPICK.features.length){pickTrail(null);return true;}return false;}
+  try{list=await trailsAt(e.lngLat);}catch(err){showMsg('לא הצלחתי לשאול את OpenStreetMap על מסלולים ('+err.message+'). נסו שוב בעוד רגע.');return true;}
+  if(!list.length){if(TRAILPICK.features.length){showMsg('');pickTrail(null);return true;}
+    showMsg('לא נמצא כאן מסלול מסומן. נסו ללחוץ קרוב יותר לקו הצבעוני.');return true;}
   if(list.length===1)pickTrail(list[0]);else chooseTrail(list);
   return true;
 }
