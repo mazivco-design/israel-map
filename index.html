@@ -133,6 +133,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   </div>
   <div class="ctl">
     <button id="b-lbl" aria-pressed="true">שמות</button>
+    <button id="b-roads" aria-pressed="false">כבישים</button>
     <button id="b-trails" aria-pressed="false">שבילים</button>
     <button id="b-regions" aria-pressed="false">אזורים</button>
     <button id="b-countries" aria-pressed="false">מדינות</button>
@@ -190,7 +191,7 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,trails:false,regions:false,countries:false,sel:new Set()};
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,regions:false,countries:false,sel:new Set()};
 let REG=[],CTR=[],FOUND=EMPTY;
 const fc=f=>({type:'FeatureCollection',features:f});
 const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
@@ -239,6 +240,14 @@ function buildStyle(){
       {id:'roads-minor',type:'line',source:'omt','source-layer':'transportation',minzoom:11,
         filter:['in',['get','class'],['literal',['secondary','tertiary','minor']]],
         paint:{'line-color':'#f2e6c9','line-opacity':.28,'line-width':['interpolate',['linear'],['zoom'],11,.3,15,1.4]}},
+      // "roads" layer: stronger road lines by class, with route numbers in small shields (see makeShield)
+      {id:'roads-hl-case',type:'line',source:'omt','source-layer':'transportation',minzoom:6,layout:{...hide,'line-join':'round','line-cap':'round'},
+        filter:['in',['get','class'],['literal',['motorway','trunk','primary','secondary','tertiary']]],
+        paint:{'line-color':'#1a1410','line-opacity':.55,'line-width':['interpolate',['linear'],['zoom'],6,['match',['get','class'],['motorway','trunk'],2.2,1.2],12,['match',['get','class'],['motorway','trunk'],6,'primary',5,3.5],15,['match',['get','class'],['motorway','trunk'],10,8]]}},
+      {id:'roads-hl',type:'line',source:'omt','source-layer':'transportation',minzoom:6,layout:{...hide,'line-join':'round','line-cap':'round'},
+        filter:['in',['get','class'],['literal',['motorway','trunk','primary','secondary','tertiary']]],
+        paint:{'line-color':['match',['get','class'],'motorway','#e8564b','trunk','#f08a4b','primary','#f5c04a','secondary','#f2ecd0','#d8d2b8'],
+          'line-width':['interpolate',['linear'],['zoom'],6,['match',['get','class'],['motorway','trunk'],1.2,.6],12,['match',['get','class'],['motorway','trunk'],4,'primary',3.2,2],15,['match',['get','class'],['motorway','trunk'],7,5.5]]}},
       {id:'trails-paths',type:'line',source:'omt','source-layer':'transportation',minzoom:10,
         filter:['in',['get','class'],['literal',['path','track']]],layout:{...hide,'line-join':'round'},
         paint:{'line-color':['match',['get','class'],'track','#e8d6a8','#ffd27a'],'line-opacity':.85,
@@ -247,6 +256,15 @@ function buildStyle(){
         paint:{'line-color':['coalesce',['get','color'],'#ff8a3d'],'line-width':['interpolate',['linear'],['zoom'],6,2.5,13,5],'line-blur':.4}},
       {id:'found-point',type:'circle',source:'found',filter:['==',['geometry-type'],'Point'],
         paint:{'circle-radius':7,'circle-color':['coalesce',['get','color'],'#ff8a3d'],'circle-stroke-color':'#1b0c05','circle-stroke-width':2}},
+      {id:'road-shields',type:'symbol',source:'omt','source-layer':'transportation_name',layout:{...hide,
+          'symbol-placement':'line','symbol-spacing':['interpolate',['linear'],['zoom'],8,250,14,400],
+          'text-field':['get','ref'],'text-font':FONTB,'text-size':11,
+          'icon-image':['match',['get','class'],'motorway','shield-motorway','trunk','shield-trunk','primary','shield-primary','shield-minor'],
+          'icon-text-fit':'both','icon-text-fit-padding':[1,4,1,4],
+          'icon-rotation-alignment':'viewport','text-rotation-alignment':'viewport','text-pitch-alignment':'viewport','icon-pitch-alignment':'viewport'},
+        filter:['all',['has','ref'],['<=',['length',['to-string',['get','ref']]],6],
+          ['>=',['zoom'],['match',['get','class'],['motorway','trunk'],6.5,'primary',9,['secondary','tertiary'],10.5,99]]],
+        paint:{'text-color':['match',['get','class'],['motorway','trunk'],'#ffffff','#1b1607']}},
       {id:'water-name',type:'symbol',source:'omt','source-layer':'water_name',
         layout:{'text-field':NAME,'text-font':FONT,'text-size':13},
         paint:{'text-color':'#bfe0f2','text-halo-color':'#0b1418','text-halo-width':1.4}},
@@ -275,6 +293,7 @@ function buildStyle(){
   };
 }
 const LABEL_LAYERS=['water-name','peaks','places-minor','places-town','places-city'];
+const ROAD_LAYERS=['roads-hl-case','roads-hl','road-shields'];
 const REGION_LAYERS=['region-dim','region-sel','region-lines','region-sel-line','region-names'];
 const COUNTRY_LAYERS=['country-dim','country-sel','country-lines','country-sel-line','country-names'];
 
@@ -293,6 +312,7 @@ function apply(){
   map.setPaintProperty('bg','background-color',S.color==='hyp'?'#4a4d4f':'#4d5053');
   LABEL_LAYERS.forEach(id=>vis(id,S.labels));
   vis('trails-paths',S.trails);
+  ROAD_LAYERS.forEach(id=>vis(id,S.roads));
   REGION_LAYERS.forEach(id=>vis(id,S.regions));
   COUNTRY_LAYERS.forEach(id=>vis(id,S.countries));
   const sel=['in',['get','id'],['literal',[...S.sel]]];
@@ -303,6 +323,17 @@ function apply(){
 }
 map.on('load',apply);
 
+/* road number shields, drawn on a canvas and stretched around the number (styles lose images on a switch, so they are made on demand) */
+const SHIELD={motorway:['#c23b30','#ffffff'],trunk:['#d7672c','#ffffff'],primary:['#f5c04a','#2a2108'],minor:['#ece6cc','#2a2108']};
+function makeShield(id){
+  const [fill,edge]=SHIELD[id.slice(7)]||SHIELD.minor, r=2, W=24, H=20;
+  const c=document.createElement('canvas');c.width=W*r;c.height=H*r;const g=c.getContext('2d');g.scale(r,r);
+  g.fillStyle=fill;g.strokeStyle=edge;g.lineWidth=1.5;
+  g.beginPath();g.roundRect(1,1,W-2,H-2,4);g.fill();g.stroke();
+  map.addImage(id,g.getImageData(0,0,W*r,H*r),{pixelRatio:r,stretchX:[[6*r,18*r]],stretchY:[[6*r,14*r]],content:[5*r,4*r,19*r,16*r]});
+}
+map.on('styleimagemissing',e=>{if(e.id.startsWith('shield-')&&!map.hasImage(e.id))makeShield(e.id);});
+
 /* ---------- controls ---------- */
 function press(id,on){$(id).setAttribute('aria-pressed',on);}
 function setColor(c){S.color=c;press('c-hyp',c==='hyp');press('c-uni',c==='uni');$('legend').hidden=c!=='hyp';apply();}
@@ -310,6 +341,7 @@ $('c-hyp').onclick=()=>setColor('hyp');
 $('c-uni').onclick=()=>setColor('uni');
 $('ex').addEventListener('input',e=>{S.ex=+e.target.value;$('exv').textContent='×'+S.ex;map.setTerrain({source:'dem',exaggeration:S.ex});});
 $('b-lbl').onclick=()=>{S.labels=!S.labels;press('b-lbl',S.labels);apply();};
+$('b-roads').onclick=()=>{S.roads=!S.roads;press('b-roads',S.roads);apply();};
 $('b-trails').onclick=()=>{S.trails=!S.trails;press('b-trails',S.trails);apply();};
 $('b-reset').onclick=()=>map.flyTo({...HOME,duration:1600});
 
