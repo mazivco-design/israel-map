@@ -45,6 +45,7 @@ button.step{width:30px;height:30px;padding:0;font-size:1.1rem;line-height:1;font
 #sunctl{flex:1 1 100%}
 #sunt{width:200px}
 #sunnote{color:var(--muted);font-size:.78rem}
+#sundate{font-size:.82rem;color:var(--muted)}
 button{font:inherit;font-size:.86rem;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer}
 button:disabled{opacity:.4;cursor:not-allowed}
 button[aria-pressed=true]{background:var(--accent);color:#1b1607;border-color:var(--accent);font-weight:700}
@@ -149,7 +150,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <button id="b-reset">איפוס מבט</button>
   </div>
   <div class="ctl" id="sunctl" hidden>
-    <label for="sunt">21 ביוני 2026</label>
+    <span class="seg" role="group" aria-label="תאריך" id="sundates"></span>
+    <span id="sundate"></span>
+    <button id="sun-play" aria-pressed="false">▶ הרץ את היום</button>
+    <span style="flex-basis:100%;height:0"></span>
     <button id="sun-minus" class="step" aria-label="חצי שעה אחורה">−</button>
     <input id="sunt" type="range" min="0" max="0" step="1" value="0">
     <button id="sun-plus" class="step" aria-label="חצי שעה קדימה">+</button>
@@ -208,7 +212,7 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,satellite:false,sun:false,sunI:0,regions:false,countries:false,sel:new Set()};
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,satellite:false,sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
 let REG=[],CTR=[],FOUND=EMPTY;
 const fc=f=>({type:'FeatureCollection',features:f});
 const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
@@ -470,10 +474,14 @@ function setMarked(on){
    Cast shadows of the sun are precomputed by tools/build_shadows.py (Israel only, while the sun is up);
    sun and moon positions, moon phase, twilight and night are computed here. ---------- */
 let SUN=null;                 // shadows/manifest.json once loaded
-const SUN_DATE='0621', SUN_Y=2026, SUN_M=6, SUN_D=21, SUN_TZ=3, SITE=[35.0,31.5];
+const SITE=[35.0,31.5];
+// four full-moon days: the moon rides highest in December and lowest in June (opposite to the sun)
+const SUN_DAYS={'20261223':['דצמבר','23 בדצמבר 2026 · ירח מלא, כמעט מעל הראש'],'20270321':['מרץ','21 במרץ 2027 · ירח מלא, עולה במזרח'],
+  '20270618':['יוני','18 ביוני 2027 · ירח מלא נמוך בדרום'],'20270915':['ספטמבר','15 בספטמבר 2027 · ירח מלא, עולה במזרח']};
+const DAY=()=>SUN.dates[S.sunDate];
 const SLOTS=48;               // 00:00 … 23:30
-function sunFrames(){return SUN?SUN.dates[SUN_DATE]:[];}
-function sunUrl(f,half){return BASE+`shadows/${SUN_DATE}/${f.f}-${half}.png`;}
+function sunFrames(){return SUN?DAY().frames:[];}
+function sunUrl(f,half){return BASE+`shadows/${S.sunDate}/${f.f}-${half}.png`;}
 function sunCoords(half){const [W,S_,E,N]=SUN.bounds,m=SUN.split;
   return half==='n'?[[W,N],[E,N],[E,m],[W,m]]:[[W,m],[E,m],[E,S_],[W,S_]];}
 
@@ -490,7 +498,7 @@ function horizontal(c,d,lng,lat){const H=RAD*(280.16+360.9856235*d)+RAD*lng-c.ra
   const az=Math.atan2(Math.sin(H),Math.cos(H)*Math.sin(phi)-Math.tan(c.dec)*Math.cos(phi));
   return {az:(az/RAD+180+360)%360,alt:alt/RAD};}
 function skyAt(slot){
-  const date=Date.UTC(SUN_Y,SUN_M-1,SUN_D,0,slot*30)-SUN_TZ*3600e3, d=date/864e5-0.5+2440588-2451545;
+  const D=DAY(), date=Date.UTC(D.y,D.m-1,D.d,0,slot*30)-D.tz*3600e3, d=date/864e5-0.5+2440588-2451545;
   const s=sunEq(d),m=moonEq(d);
   const sun=horizontal(s,d,...SITE),moon=horizontal(m,d,...SITE);
   // lit fraction of the moon and whether it is growing (for the phase symbol)
@@ -568,21 +576,46 @@ async function loadSun(){
   if(SUN)return true;
   try{const r=await fetch(BASE+'shadows/manifest.json');if(!r.ok)throw 0;SUN=await r.json();}catch(e){return false;}
   $('sunt').max=SLOTS-1;
+  // date buttons; start with the day closest in the year to today
+  const doy=x=>{const t=new Date(x.y,x.m-1,x.d);return (t-new Date(t.getFullYear(),0,0))/864e5;};
+  const today=doy({y:2001,m:new Date().getMonth()+1,d:new Date().getDate()});
+  let best=1e9;
+  for(const k in SUN.dates){
+    const b=document.createElement('button');b.textContent=SUN_DAYS[k]?SUN_DAYS[k][0]:k;b.dataset.k=k;b.setAttribute('aria-pressed','false');
+    b.onclick=()=>setSunDate(k);$('sundates').append(b);
+    const dd=Math.abs(doy({...SUN.dates[k],y:2001})-today),gap=Math.min(dd,365-dd);if(gap<best){best=gap;S.sunDate=k;}
+  }
+  markSunDate();
   // start at the current time of day
   const now=new Date();S.sunI=now.getHours()*2+(now.getMinutes()>=30?1:0);
-  // fetch every shadow frame in the background so moving the slider is instant
-  sunFrames().forEach(f=>['n','s'].forEach(h=>{const im=new Image();im.src=sunUrl(f,h);}));
+  preloadSun();
   return true;
 }
+// fetch every shadow frame of the day in the background so moving the slider is instant
+function preloadSun(){sunFrames().forEach(f=>['n','s'].forEach(h=>{const im=new Image();im.src=sunUrl(f,h);}));}
+function markSunDate(){
+  document.querySelectorAll('#sundates button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===S.sunDate));
+  $('sundate').textContent=(SUN_DAYS[S.sunDate]||[,''])[1];
+}
+function setSunDate(k){S.sunDate=k;markSunDate();preloadSun();showSunTime();setSun();refreshTerrain();}
+/* "run the day": half an hour every 0.4 s, round and round until pressed again */
+let playT=null;
+function setPlay(on){
+  clearInterval(playT);playT=null;press('sun-play',on);$('sun-play').textContent=on?'⏸ עצירה':'▶ הרץ את היום';
+  if(on)playT=setInterval(()=>setSunI(S.sunI+1),400);
+}
+$('sun-play').onclick=()=>setPlay(!playT);
 $('b-sun').onclick=async()=>{
   if(!S.sun&&!(await loadSun())){showMsg('קובץ הצללים לא נטען.');return;}
   S.sun=!S.sun;press('b-sun',S.sun);$('sunctl').hidden=!S.sun;
+  if(!S.sun)setPlay(false);
   if(S.sun){$('sunt').value=S.sunI;showSunTime();}
   apply();
 };
-$('sunt').addEventListener('input',e=>setSunI(+e.target.value));
-$('sun-minus').onclick=()=>setSunI(S.sunI-1);
-$('sun-plus').onclick=()=>setSunI(S.sunI+1);
+// moving the time by hand stops the animation
+$('sunt').addEventListener('input',e=>{if(playT)setPlay(false);setSunI(+e.target.value);});
+$('sun-minus').onclick=()=>{if(playT)setPlay(false);setSunI(S.sunI-1);};
+$('sun-plus').onclick=()=>{if(playT)setPlay(false);setSunI(S.sunI+1);};
 
 map.on('error',e=>{
   if(e.sourceId!=='marked'||markedFailed)return;

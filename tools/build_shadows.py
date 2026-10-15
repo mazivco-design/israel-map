@@ -6,8 +6,8 @@ works out where the sun is and which pixels are hidden from it by terrain
 (a ray is walked from every pixel toward the sun; if the ground rises above
 the ray anywhere, the pixel is in shadow).
 
-Output, per date (stage 1: June 21 only):
-  shadows/<MMDD>/<HHMM>-n.png, <HHMM>-s.png   north and south halves (each ≤4096 px tall,
+Output, per date (four full-moon days near the solstices and equinoxes):
+  shadows/<YYYYMMDD>/<HHMM>-n.png, <HHMM>-s.png   north and south halves (each ≤4096 px tall,
                                              the safe WebGL texture size); 2-color PNG, black = shadow
   shadows/manifest.json                       bounds, frames, sun azimuth/altitude per frame
 
@@ -21,9 +21,8 @@ from PIL import Image
 Z = 11
 TERRAIN = "terrain"
 OUT = "shadows"
-TZ = 3                      # Israel summer time (IDT) = UTC+3
-DATES = [(6, 21)]           # stage 1
-YEAR = 2026
+# (year, month, day, hours ahead of UTC on that day: 2 = Israel winter time, 3 = summer time)
+DATES = [(2026, 12, 23, 2), (2027, 3, 21, 2), (2027, 6, 18, 3), (2027, 9, 15, 3)]
 CENTER = (35.0, 31.5)       # sun position is taken here (the difference across Israel is a few minutes of time)
 STEP_MIN = 30
 BIAS = 3.0                  # meters; ignores small bumps (the DEM is a surface model with buildings and trees)
@@ -107,13 +106,13 @@ def main():
     west_cut = int(round((34.0 - W) / (E - W) * w)) + 2
     lat_mid = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y0 * 256 + half) / n))))
     os.makedirs(OUT, exist_ok=True)
-    man = {"bounds": [W, S_, E, N], "split": lat_mid, "tz": TZ, "dates": {}}
-    for mo, da in DATES:
-        key = f"{mo:02d}{da:02d}"
+    man = {"bounds": [W, S_, E, N], "split": lat_mid, "dates": {}}
+    for yr, mo, da, tz in DATES:
+        key = f"{yr}{mo:02d}{da:02d}"
         os.makedirs(f"{OUT}/{key}", exist_ok=True)
         frames = []
         for minute in range(0, 24 * 60, STEP_MIN):
-            t = dt.datetime(YEAR, mo, da, minute // 60, minute % 60) - dt.timedelta(hours=TZ)
+            t = dt.datetime(yr, mo, da, minute // 60, minute % 60) - dt.timedelta(hours=tz)
             az, alt = sun(t, *CENTER)
             if alt < 2:            # sun (nearly) down: no frame
                 continue
@@ -124,7 +123,7 @@ def main():
             save(m[half:], f"{OUT}/{key}/{name}-s.png")
             frames.append({"t": f"{minute // 60:02d}:{minute % 60:02d}", "f": name, "az": round(az, 1), "alt": round(alt, 1)})
             print(key, name, f"az={az:.0f} alt={alt:.1f} shade={m.mean():.2%}", flush=True)
-        man["dates"][key] = frames
+        man["dates"][key] = {"y": yr, "m": mo, "d": da, "tz": tz, "frames": frames}
     json.dump(man, open(f"{OUT}/manifest.json", "w"), separators=(",", ":"))
 
 
