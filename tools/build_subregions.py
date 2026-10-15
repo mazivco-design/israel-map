@@ -35,6 +35,9 @@ REGIONS = [
          clip=[(35.22, 32.795), (35.22, 32.85), (35.43, 32.85), (35.43, 32.78), (35.31, 32.785)]),
     dict(id="s_tabor", name="הר תבור", kind="above", seed=(35.39, 32.687), level=250,
          clip=[(35.35, 32.66), (35.35, 32.71), (35.43, 32.71), (35.43, 32.66)]),
+    # west edge: the Jordan inflow; the lake is left out by its flat surface level
+    dict(id="s_tzeida", name="בקעת בית צידה (הבטיחה)", kind="below", seed=(35.635, 32.90), level=-170, floor=-213.5, open=2,
+         clip=[(35.615, 32.93), (35.68, 32.93), (35.68, 32.855), (35.64, 32.855), (35.622, 32.885)]),
     dict(id="s_hula", name="עמק החולה", kind="below", seed=(35.615, 33.10), level=130,
          clip=[(35.55, 33.02), (35.55, 33.25), (35.70, 33.25), (35.70, 33.02)]),   # south: the valley ends at the Rosh Pina sill
     # the Gilboa runs into the Samaria hills in the south-west; the clip line there is a judgment call
@@ -86,7 +89,10 @@ def region_mask(R, H, to_px):
         M = ndimage.binary_dilation(M, iterations=3) & clip          # out to the foot of the cliffs
         return ndimage.binary_fill_holes(ndimage.binary_closing(M, iterations=4))
     if R["kind"] == "below":
-        M = comp(ndimage.binary_opening((H < R["level"]) & clip, iterations=3))
+        low = H < R["level"]
+        if "floor" in R:                       # e.g. leave out the Kinneret, whose surface is one flat value
+            low &= H > R["floor"]
+        M = comp(ndimage.binary_opening(low & clip, iterations=R.get("open", 3)))
         # fill only small holes: a hill or ridge rising inside the valley stays out of it
         M = ndimage.binary_closing(M, iterations=3)
         holes, n = ndimage.label(ndimage.binary_fill_holes(M) & ~M)
