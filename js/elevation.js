@@ -42,6 +42,7 @@ function render(){
     rows.appendChild(li);
   });
   if(tabNow()==='pins')$('b-clear').hidden=!pins.length;
+  $('b-tour').hidden=tabNow()!=='pins'||pins.length<2;
   const P=pins[pins.length-1];
   if(!P){$('last').textContent='—';$('lastco').textContent='געו במפה כדי לסמן נקודה';$('lastnote').textContent='';return;}
   $('last').textContent=hText(P);

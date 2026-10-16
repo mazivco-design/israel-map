@@ -148,6 +148,7 @@ function showTab(t){
   $('pane-mine').hidden=t!=='mine';$('pane-pins').hidden=t!=='pins';$('rows').hidden=t!=='pins';
   $('b-clear').hidden=t==='mine'?!mineCount():!pins.length;
   $('b-clear').textContent=t==='mine'?'ניקוי הכול':'ניקוי';
+  $('b-tour').hidden=t!=='pins'||pins.length<2;
 }
 $('t-mine').onclick=()=>showTab('mine');
 $('t-pins').onclick=()=>showTab('pins');

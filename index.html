@@ -59,7 +59,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #ticks{display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted);direction:ltr;font-variant-numeric:tabular-nums}
 [hidden]{display:none!important}
 #stypes{margin-bottom:6px}
-#b-clear{white-space:nowrap}
+#b-clear,#b-tour{white-space:nowrap}
+#flybar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.8rem}
+#flybar button{padding:3px 10px}
 #layers{position:relative}
 #layers-n:empty{display:none}
 #layers-n{display:inline-block;min-width:1.3em;border-radius:999px;background:rgba(0,0,0,.35);font-size:.72rem;padding:0 4px}
@@ -156,6 +158,7 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
     <span class="seg" role="tablist" aria-label="לשוניות">
       <button id="t-mine" role="tab" aria-pressed="false">הבחירות שלי <span id="mine-n"></span></button><button id="t-pins" role="tab" aria-pressed="true">נקודות גובה</button>
     </span>
+    <button id="b-tour" hidden title="המצלמה עוברת בין נקודות הגובה">▶ סיור</button>
     <button id="b-clear" hidden>ניקוי</button>
   </header>
   <div id="pane-pins">
@@ -175,6 +178,12 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
     <span class="pbtns"><button id="prof-clear" title="מחיקת הנקודות שסומנו">ניקוי נקודות</button><button id="prof-rev" title="היפוך כיוון המסלול">⇄</button><button id="prof-x" aria-label="סגירת הגרף">×</button></span></header>
   <canvas id="profcv"></canvas>
   <div id="profhover"></div>
+  <div id="flybar">
+    <button id="fly-play" aria-pressed="false">▶ טיסה</button>
+    <span class="seg" role="group" aria-label="מהירות"><button id="fly-x1" aria-pressed="true">×1</button><button id="fly-x2" aria-pressed="false">×2</button><button id="fly-x4" aria-pressed="false">×4</button></span>
+    <span class="seg" role="group" aria-label="גובה מצלמה"><button id="fly-low" aria-pressed="true">קרוב</button><button id="fly-high" aria-pressed="false">מלמעלה</button></span>
+    <button id="fly-tour" title="מעבר בין הנקודות שסומנו על הגרף">סיור בין הנקודות</button>
+  </div>
 </section>
 
 <div id="help" hidden>
@@ -271,6 +280,7 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
 <script src="js/search.js"></script>
 <script src="js/elevation.js"></script>
 <script src="js/profile.js"></script>
+<script src="js/flight.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

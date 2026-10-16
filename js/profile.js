@@ -46,7 +46,7 @@ async function openProfile(name,geom,color){
   }catch(e){}
   const ok=pts.filter(p=>p.z!=null);
   if(ok.length<2){$('profstats').textContent=S.data==='local'?'אין נתוני גובה למסלול הזה (מחוץ לאזור המקומי). נסו במצב "עולמי".':'לא הצלחתי לקרוא גבהים.';return;}
-  PROF.pts=ok;computeSlopes();drawProfile();
+  PROF.pts=ok;computeSlopes();drawProfile();FLY.pos=0;
 }
 function computeSlopes(){
   const P=PROF.pts,n=P.length;
@@ -56,7 +56,7 @@ function computeSlopes(){
 }
 function reverseProfile(){if(!PROF.pts)return;const L=PROF.pts[PROF.pts.length-1].d;PROF.pts=PROF.pts.reverse().map(p=>({...p,d:L-p.d}));
   PROF.marks=PROF.marks.map(i=>PROF.pts.length-1-i);computeSlopes();drawProfile();}
-function closeProfile(){$('prof').hidden=true;PROF.pts=null;PROF.marks=[];PROF.markers.forEach(m=>m.remove());PROF.markers=[];
+function closeProfile(){if(window.FLY&&FLY.on)flyStop();$('prof').hidden=true;PROF.pts=null;PROF.marks=[];PROF.markers.forEach(m=>m.remove());PROF.markers=[];
   if(PROF.hoverMarker){PROF.hoverMarker.remove();PROF.hoverMarker=null;}}
 function sizeProfile(){$('prof').style.bottom=($('panel').offsetHeight+42)+'px';}
 addEventListener('resize',()=>{if(!$('prof').hidden){sizeProfile();drawProfile();}});
