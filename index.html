@@ -58,6 +58,21 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #ramp{height:10px;border-radius:3px}
 #ticks{display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted);direction:ltr;font-variant-numeric:tabular-nums}
 [hidden]{display:none!important}
+#stypes{margin-bottom:6px}
+#b-clear{white-space:nowrap}
+#stypes button,#log .seg button{font-size:.8rem;padding:4px 10px}
+#mine-n:empty{display:none}
+#mine-n{display:inline-block;min-width:1.3em;border-radius:999px;background:rgba(0,0,0,.35);font-size:.72rem;padding:0 4px;margin-inline-start:2px}
+#mine{list-style:none;margin:0;padding:0;overflow-y:auto;display:flex;flex-direction:column;gap:2px;min-height:0}
+#mine li{display:grid;grid-template-columns:12px 1fr auto;gap:8px;align-items:center;padding:4px 2px;border-top:1px solid var(--line)}
+#mine li:first-child{border-top:none}
+#mine i{width:12px;height:12px;border-radius:50%}
+#mine .go{border:none;padding:0;text-align:right;display:flex;flex-direction:column;gap:1px;min-width:0;border-radius:4px}
+#mine .go b{font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mine .go span{color:var(--muted);font-size:.72rem}
+#mine .x{border:none;padding:0 6px;font-size:1rem;color:var(--muted)}
+#mineinfo{color:var(--muted);font-size:.76rem;display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:4px}
+#pane-mine{display:flex;flex-direction:column;min-height:0;gap:4px}
 .pin{display:flex;flex-direction:column;align-items:center;pointer-events:none}
 .pin b{font:700 .78rem var(--body);color:#1b0c05;background:var(--pin);padding:1px 7px;border-radius:999px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.6);font-variant-numeric:tabular-nums}
 .pin i{width:2px;height:10px;background:var(--pin)}
@@ -97,30 +112,35 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   <h1>תבליט ישראל</h1>
   <p>גרירה להזזה, שתי אצבעות לסיבוב והטיה, צביטה לזום. נגיעה במפה מסמנת נקודה וקוראת את הגובה שלה.</p>
   <div id="search">
+    <span class="seg" role="group" aria-label="מה לחפש" id="stypes">
+      <button id="s-place" aria-pressed="true">מקומות</button><button id="s-trail" aria-pressed="false">שבילים</button><button id="s-road" aria-pressed="false">כבישים</button>
+    </span>
     <form id="sform" role="search">
-      <input id="q" type="search" placeholder="חיפוש מקום, הר או מסלול" aria-label="חיפוש" autocomplete="off" enterkeyhint="search">
+      <input id="q" type="search" placeholder="שם של ישוב, הר או מקום" aria-label="חיפוש" autocomplete="off" enterkeyhint="search">
       <button type="submit">חפש</button>
     </form>
     <p id="smsg" hidden></p>
     <ul id="results" hidden></ul>
-    <div id="found" hidden>
-      <span id="foundchips"></span>
-      <button id="b-route">ניקוי הסימונים</button>
-    </div>
   </div>
 </div>
 
 <section id="log" class="card" aria-live="polite">
   <header>
-    <h2>נקודות גובה</h2>
+    <span class="seg" role="tablist" aria-label="לשוניות">
+      <button id="t-mine" role="tab" aria-pressed="false">הבחירות שלי <span id="mine-n"></span></button><button id="t-pins" role="tab" aria-pressed="true">נקודות גובה</button>
+    </span>
     <button id="b-clear" hidden>ניקוי</button>
   </header>
-  <div>
+  <div id="pane-pins">
     <div id="last">—</div>
     <div id="lastco">געו במפה כדי לסמן נקודה</div>
     <div id="lastnote"></div>
   </div>
   <ol id="rows"></ol>
+  <div id="pane-mine" hidden>
+    <ul id="mine"></ul>
+    <div id="mineinfo"></div>
+  </div>
 </section>
 
 <div id="panel" class="card">
@@ -147,7 +167,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <button id="b-lbl" aria-pressed="true">שמות</button>
     <button id="b-roads" aria-pressed="false">כבישים</button>
     <button id="b-trails" aria-pressed="false">שבילים</button>
-    <button id="b-regions" aria-pressed="false">אזורים</button>
+    <button id="b-regions" aria-pressed="false" title="האזורים הגדולים: הגליל, השרון, הנגב…">אזורים</button>
+    <button id="b-land" aria-pressed="false" title="מכתשים, בקעות, עמקים והרים">נוף</button>
     <button id="b-countries" aria-pressed="false">מדינות</button>
     <button id="b-reset">איפוס מבט</button>
   </div>
@@ -164,9 +185,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   </div>
   <div class="ctl" id="selctl" hidden>
     <select id="addsel" aria-label="הוספה לבחירה"><option value="">הוספה לבחירה…</option></select>
-    <span id="chips"></span>
-    <span id="selinfo"></span>
-    <button id="b-selclear" hidden>ניקוי בחירה</button>
+    <span id="selinfo">נגיעה במפה בוחרת ומבטלת. הבחירות מרוכזות ב"הבחירות שלי".</span>
   </div>
   <div id="legend">
     <div id="ramp"></div>
@@ -217,8 +236,8 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,road:'',satellite:false,sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
-let ROADPICK=EMPTY,ROADS=null,TRAILPICK=EMPTY;   // TRAILPICK: the picked marked trail (from OpenStreetMap);   // the picked road, whole (from roads.geojson, made by tools/build_roads.py)
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
+let ROADPICK=EMPTY,ROADS=null;   // picked roads, whole (from roads.geojson, made by tools/build_roads.py)
 let REG=[],REG_BIG=[],REG_SUB=[],POIS=EMPTY,CTR=[],FOUND=EMPTY;   // REG = small regions first (they win a click), then the large ones
 const fc=f=>({type:'FeatureCollection',features:f});
 const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name,small:!!f.properties.kind},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
@@ -242,7 +261,7 @@ function buildStyle(){
     sources:{omt:M.vector,dem:{...dem},demShade:{...dem},
       regions:{type:'geojson',data:fc(REG)},regionLabels:{type:'geojson',data:labelsOf(REG)},
       countries:{type:'geojson',data:fc(CTR)},countryLabels:{type:'geojson',data:labelsOf(CTR)},
-      found:{type:'geojson',data:FOUND},roadpick:{type:'geojson',data:ROADPICK},trailpick:{type:'geojson',data:TRAILPICK},pois:{type:'geojson',data:POIS},
+      found:{type:'geojson',data:FOUND},roadpick:{type:'geojson',data:ROADPICK},pois:{type:'geojson',data:POIS},
       // satellite imagery streams from Esri, so it exists in global mode only
       ...(S.data==='global'?{sat:SAT}:{})},
     sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
@@ -290,11 +309,6 @@ function buildStyle(){
         filter:['in',['get','class'],['literal',['path','track']]],layout:{...hide,'line-join':'round'},
         paint:{'line-color':['match',['get','class'],'track','#e8d6a8','#ffd27a'],'line-opacity':.85,
           'line-width':['interpolate',['linear'],['zoom'],10,.8,13,2,16,4.5],'line-dasharray':[2,1.5]}},
-      // a picked marked trail, drawn whole in its own marking colour
-      {id:'trail-pick-case',type:'line',source:'trailpick',layout:{'line-join':'round','line-cap':'round'},
-        paint:{'line-color':['case',['==',['get','color'],'#222222'],'#ffffff','#14110b'],'line-width':['interpolate',['linear'],['zoom'],8,4,13,8,16,12]}},
-      {id:'trail-pick',type:'line',source:'trailpick',layout:{'line-join':'round','line-cap':'round'},
-        paint:{'line-color':['get','color'],'line-width':['interpolate',['linear'],['zoom'],8,2.2,13,4.5,16,7]}},
       {id:'found-line',type:'line',source:'found',filter:['!=',['geometry-type'],'Point'],layout:{'line-join':'round','line-cap':'round'},
         paint:{'line-color':['coalesce',['get','color'],'#ff8a3d'],'line-width':['interpolate',['linear'],['zoom'],6,2.5,13,5],'line-blur':.4}},
       {id:'found-point',type:'circle',source:'found',filter:['==',['geometry-type'],'Point'],
@@ -303,7 +317,7 @@ function buildStyle(){
       {id:'road-pick-hit',type:'line',source:'omt','source-layer':'transportation_name',minzoom:6,layout:{...hide},
         filter:['has','ref'],paint:{'line-color':'#000','line-opacity':.01,'line-width':14}},
       {id:'road-pick-case',type:'line',source:'roadpick',layout:{...hide,'line-join':'round','line-cap':'round'},paint:{'line-color':'#1b0c05','line-width':['interpolate',['linear'],['zoom'],6,4,12,9,15,13]}},
-      {id:'road-pick',type:'line',source:'roadpick',layout:{...hide,'line-join':'round','line-cap':'round'},paint:{'line-color':'#ffe14d','line-width':['interpolate',['linear'],['zoom'],6,2.2,12,5.5,15,8.5]}},
+      {id:'road-pick',type:'line',source:'roadpick',layout:{...hide,'line-join':'round','line-cap':'round'},paint:{'line-color':['get','color'],'line-width':['interpolate',['linear'],['zoom'],6,2.2,12,5.5,15,8.5]}},
       {id:'road-shields',type:'symbol',source:'omt','source-layer':'transportation_name',layout:{...hide,
           'symbol-placement':'line','symbol-spacing':['interpolate',['linear'],['zoom'],8,250,14,400],
           'text-field':['get','ref'],'text-font':FONTB,'text-size':11,
@@ -350,7 +364,8 @@ function buildStyle(){
 }
 const LABEL_LAYERS=['water-name','peaks','places-minor','places-town','places-city','poi-dot','poi-names'];
 const ROAD_LAYERS=['roads-hl-case','roads-hl','road-shields','road-pick-hit','road-pick-case','road-pick'];
-const REGION_LAYERS=['region-dim','region-sel','region-lines','region-sel-line','region-names','sub-lines','sub-names'];
+const REGION_LAYERS=['region-dim','region-lines','region-names'];
+const LAND_LAYERS=['sub-lines','sub-names'];
 const COUNTRY_LAYERS=['country-dim','country-sel','country-lines','country-sel-line','country-names'];
 
 const map=new maplibregl.Map({container:'map',style:buildStyle(),...HOME,maxPitch:80,attributionControl:false});
@@ -372,15 +387,17 @@ function apply(){
   LABEL_LAYERS.forEach(id=>vis(id,S.labels));
   vis('trails-paths',S.trails);
   ROAD_LAYERS.forEach(id=>vis(id,S.roads));
-  // one road picked: it stands out, the others fade
-  const pick=S.roads&&S.road;
+  // picked roads stand out, the others fade
+  const pick=S.roads&&S.roadSel.size>0;
   if(map.getSource('roadpick'))map.getSource('roadpick').setData(ROADPICK);
   map.setPaintProperty('roads-hl','line-opacity',pick?.25:1);
   map.setPaintProperty('roads-hl-case','line-opacity',pick?.15:.55);
-  const own=['==',['get','ref'],S.road||'\u0000'];
+  const own=['in',['to-string',['get','ref']],['literal',[...S.roadSel]]];
   map.setPaintProperty('road-shields','icon-opacity',pick?['case',own,1,.3]:1);
   map.setPaintProperty('road-shields','text-opacity',pick?['case',own,1,.3]:1);
   REGION_LAYERS.forEach(id=>vis(id,S.regions));
+  LAND_LAYERS.forEach(id=>vis(id,S.land));
+  ['region-sel','region-sel-line'].forEach(id=>vis(id,S.regions||S.land));
   COUNTRY_LAYERS.forEach(id=>vis(id,S.countries));
   const sel=['in',['get','id'],['literal',[...S.sel]]];
   ['region-sel','region-sel-line','country-sel','country-sel-line'].forEach(id=>map.setFilter(id,sel));
@@ -388,11 +405,6 @@ function apply(){
   map.setFilter('region-dim',['all',['!',sel],['!',['has','kind']]]);map.setFilter('country-dim',['!',sel]);
   ['region-dim','country-dim'].forEach(id=>map.setPaintProperty(id,'fill-opacity',S.sel.size?.35:0));
   setMarked(S.trails);
-  // one trail picked: the other trails fade
-  const tp=TRAILPICK.features.length>0;
-  if(map.getSource('trailpick'))map.getSource('trailpick').setData(TRAILPICK);
-  map.setPaintProperty('trails-paths','line-opacity',tp?.3:.85);
-  if(map.getLayer('trails-marked'))map.setPaintProperty('trails-marked','raster-opacity',tp?.35:.9);
   setSun();
   refreshTerrain();
 }
@@ -421,8 +433,8 @@ $('ex-plus').onclick=()=>stepEx(1);
 $('ex').addEventListener('input',e=>{S.ex=+e.target.value;$('exv').textContent='×'+S.ex;map.setTerrain({source:'dem',exaggeration:S.ex});});
 $('b-sat').onclick=()=>{S.satellite=!S.satellite;press('b-sat',S.satellite);apply();};
 $('b-lbl').onclick=()=>{S.labels=!S.labels;press('b-lbl',S.labels);apply();};
-$('b-roads').onclick=()=>{S.roads=!S.roads;if(!S.roads){S.road='';ROADPICK=EMPTY;}press('b-roads',S.roads);apply();};
-$('b-trails').onclick=()=>{S.trails=!S.trails;if(!S.trails)TRAILPICK=EMPTY;press('b-trails',S.trails);apply();};
+$('b-roads').onclick=()=>{S.roads=!S.roads;press('b-roads',S.roads);apply();};
+$('b-trails').onclick=()=>{S.trails=!S.trails;press('b-trails',S.trails);apply();};
 $('b-reset').onclick=()=>map.flyTo({...HOME,duration:1600});
 
 function setDataMode(m,first){
@@ -459,7 +471,7 @@ loadAreas('countries.geojson',f=>CTR=f,'b-countries','מדינות');
 const byName=(a,b)=>a.properties.name.localeCompare(b.properties.name,'he');
 function fillPicker(){
   const sel=$('addsel');sel.length=1;
-  for(const [on,list,label] of [[S.regions,REG_BIG,'אזורים בישראל'],[S.regions,REG_SUB,'אזורים קטנים: מכתשים, בקעות והרים'],[S.countries,CTR,'מדינות']]){
+  for(const [on,list,label] of [[S.regions,REG_BIG,'אזורים בישראל'],[S.land,REG_SUB,'נוף: מכתשים, בקעות והרים'],[S.countries,CTR,'מדינות']]){
     if(!on||!list.length)continue;
     const g=document.createElement('optgroup');g.label=label;
     [...list].sort(byName).forEach(f=>{if(S.sel.has(f.properties.id))return;const o=document.createElement('option');o.value=f.properties.id;o.textContent=f.properties.name;g.append(o);});
@@ -467,15 +479,8 @@ function fillPicker(){
   }
 }
 function renderSel(){
-  const chips=$('chips');chips.textContent='';let area=0;
-  for(const id of S.sel){const f=AREAS.get(id);if(!f)continue;area+=f.properties.area;
-    const c=document.createElement('span');c.className='chip';c.textContent=f.properties.name;
-    const x=document.createElement('button');x.textContent='×';x.setAttribute('aria-label','הסרת '+f.properties.name);x.onclick=()=>toggleSel(id);
-    c.append(x);chips.append(c);}
-  $('selinfo').textContent=S.sel.size?`שטח כולל כ־${area.toLocaleString('he-IL')} קמ״ר`:'נגיעה במפה בוחרת ומבטלת';
-  $('b-selclear').hidden=!S.sel.size;
-  $('selctl').hidden=!(S.regions||S.countries);
-  fillPicker();
+  $('selctl').hidden=!(S.regions||S.land||S.countries);
+  fillPicker();renderMine();
 }
 function flyToArea(f){
   const [w,s,e,n]=f.properties.bbox;
@@ -484,25 +489,26 @@ function flyToArea(f){
 }
 function toggleSel(id,fly){
   if(!id)return;
-  if(S.sel.has(id))S.sel.delete(id);else{S.sel.add(id);if(fly)flyToArea(AREAS.get(id));}
+  if(S.sel.has(id))S.sel.delete(id);else{S.sel.add(id);if(fly)flyToArea(AREAS.get(id));showTab('mine');}
   renderSel();apply();
 }
 $('addsel').addEventListener('change',e=>{toggleSel(e.target.value,true);e.target.value='';});
-$('b-selclear').onclick=()=>{S.sel.clear();renderSel();apply();};
+const areaKind=id=>id.startsWith('c_')?'countries':id.startsWith('s_')?'land':'regions';
 function showAreas(kind,on){
-  S[kind]=on;press(kind==='regions'?'b-regions':'b-countries',on);
-  if(!on)for(const id of [...S.sel])if(id.startsWith('c_')===(kind==='countries'))S.sel.delete(id);
+  S[kind]=on;press({regions:'b-regions',land:'b-land',countries:'b-countries'}[kind],on);
+  if(!on)for(const id of [...S.sel])if(areaKind(id)===kind)S.sel.delete(id);
   renderSel();apply();
 }
 $('b-regions').onclick=()=>showAreas('regions',!S.regions);
 $('b-countries').onclick=()=>showAreas('countries',!S.countries);
+$('b-land').onclick=()=>showAreas('land',!S.land);
 function inRing(pt,ring){let c=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [xi,yi]=ring[i],[xj,yj]=ring[j];
   if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))c=!c;}return c;}
 function inPoly(pt,g){const polys=g.type==='Polygon'?[g.coordinates]:g.coordinates;
   return polys.some(p=>inRing(pt,p[0])&&!p.slice(1).some(h=>inRing(pt,h)));}
 function areaAt(lngLat){
   const pt=[lngLat.lng,lngLat.lat];
-  const f=(S.regions&&REG.find(f=>inPoly(pt,f.geometry)))||(S.countries&&CTR.find(f=>inPoly(pt,f.geometry)));
+  const f=(S.land&&REG_SUB.find(f=>inPoly(pt,f.geometry)))||(S.regions&&REG_BIG.find(f=>inPoly(pt,f.geometry)))||(S.countries&&CTR.find(f=>inPoly(pt,f.geometry)));
   return f?f.properties.id:'';
 }
 
@@ -512,7 +518,7 @@ let markedFailed=false;
 const MARKED={type:'raster',tiles:['https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png'],tileSize:512,maxzoom:17,   // 512: each tile drawn twice as big, so the marked lines stay bold when zoomed in
   attribution:'מסלולים מסומנים: <a href="https://hiking.waymarkedtrails.org" target="_blank">Waymarked Trails</a>'};
 function setMarked(on){
-  if(on&&!markedFailed&&!map.getSource('marked')){map.addSource('marked',MARKED);map.addLayer({id:'trails-marked',type:'raster',source:'marked',minzoom:8,paint:{'raster-opacity':.9}},'trail-pick-case');}
+  if(on&&!markedFailed&&!map.getSource('marked')){map.addSource('marked',MARKED);map.addLayer({id:'trails-marked',type:'raster',source:'marked',minzoom:8,paint:{'raster-opacity':.9}},'found-line');}
   if(!on&&map.getLayer('trails-marked')){map.removeLayer('trails-marked');map.removeSource('marked');}
 }
 /* ---------- sun and moon over a whole day (24 h, every half hour).
@@ -702,69 +708,153 @@ const TYPE_HE={city:'עיר',town:'עיירה',village:'יישוב',hamlet:'יי
 const results=$('results'),smsg=$('smsg');
 let searching=false;
 function showMsg(t){smsg.textContent=t;smsg.hidden=!t;}
-/* several search results can stay on the map together, each in its own color */
+/* several search results can stay on the map together, each in its own color (a marked trail in its own marking color) */
 const FCOLORS=['#ff8a3d','#4fd1ff','#ff5fa2','#b6f25c','#ffd166','#c49bff','#ff6b5b','#5cf2c1'];
-const picked=new Map();   // osm key -> {name,color,geometry,bbox}
+const picked=new Map();   // osm key -> {name,kind,color,geometry,bbox,km}
 let colorIx=0;
 const keyOf=r=>r.osm_type+r.osm_id;
 function syncFound(){
   FOUND=fc([...picked.entries()].map(([k,p])=>({type:'Feature',properties:{key:k,name:p.name,color:p.color},geometry:p.geometry})));
   const src=map.getSource('found');if(src)src.setData(FOUND);
-  const box=$('foundchips');box.textContent='';
-  for(const [k,p] of picked){
-    const c=document.createElement('span');c.className='fchip';
-    const dot=document.createElement('i');dot.style.background=p.color;
-    const t=document.createElement('span');t.textContent=p.name;
-    const x=document.createElement('button');x.textContent='×';x.setAttribute('aria-label','הסרת '+p.name);x.onclick=()=>{picked.delete(k);syncFound();markResults();};
-    c.append(dot,t,x);box.append(c);
-  }
-  $('found').hidden=!picked.size;
-  refreshTerrain();
+  refreshTerrain();renderMine();
 }
-function fitPicked(){
-  if(!picked.size)return;
-  let w=180,s=90,e=-180,n=-90;
-  for(const p of picked.values()){const [bs,bn,bw,be]=p.bbox;w=Math.min(w,bw);s=Math.min(s,bs);e=Math.max(e,be);n=Math.max(n,bn);}
+function fitBox([w,s,e,n],maxZoom=14){
   if(n-s<0.01&&e-w<0.01)map.flyTo({center:[(w+e)/2,(s+n)/2],zoom:13.5,pitch:60,duration:2000});
-  else map.fitBounds([[w,s],[e,n]],{padding:{top:160,bottom:200,left:60,right:60},pitch:50,duration:2000,maxZoom:14});
+  else map.fitBounds([[w,s],[e,n]],{padding:{top:160,bottom:200,left:60,right:60},pitch:50,duration:2000,maxZoom});
 }
-$('b-route').onclick=()=>{picked.clear();syncFound();markResults();};
 let lastList=[];
-function markResults(){[...results.querySelectorAll('button')].forEach((b,i)=>b.classList.toggle('on',!!lastList[i]&&picked.has(keyOf(lastList[i]))));}
+function markResults(){[...results.querySelectorAll('button')].forEach((b,i)=>{const r=lastList[i];if(!r)return;
+  b.classList.toggle('on',r.road?S.roadSel.has(r.road):picked.has(keyOf(r)));});}
+const TRAIL_COLORS={red:'#e8443a',blue:'#2f7fe0',green:'#2fae4a',black:'#3a3a3a',orange:'#ff8a3d',yellow:'#f2c230',purple:'#9b59d0',white:'#f4f4f4',brown:'#9a6b3c'};
+function trailColor(name,t){
+  if(/שביל ישראל/.test(name||'')||/israel national trail/i.test(t['name:en']||''))return TRAIL_COLORS.orange;
+  const c=((t['osmc:symbol']||'').split(':')[0]||t.colour||'').toLowerCase();
+  return TRAIL_COLORS[c]||(/^#[0-9a-f]{3,6}$/.test(c)?c:null);
+}
+function km(g){let d=0;const lines=g.type==='LineString'?[g.coordinates]:g.type==='MultiLineString'?g.coordinates:[];
+  for(const l of lines)for(let i=1;i<l.length;i++){const a=l[i-1],b=l[i];
+    d+=Math.hypot((b[0]-a[0])*Math.cos((a[1]+b[1])/2*Math.PI/180)*111.32,(b[1]-a[1])*110.57);}return d;}
+const kmTxt=k=>k<10?k.toFixed(1):String(Math.round(k));
 function pick(r){
   const k=keyOf(r);
   if(picked.has(k))picked.delete(k);
   else{
     const g=r.geojson&&r.geojson.type!=='Point'?r.geojson:{type:'Point',coordinates:[+r.lon,+r.lat]};
-    picked.set(k,{name:r.name||r.display_name.split(', ')[0],color:FCOLORS[colorIx++%FCOLORS.length],geometry:g,bbox:r.boundingbox.map(Number)});
+    const name=r.name||r.display_name.split(', ')[0],trail=r.category==='route';
+    const color=(trail&&trailColor(name,r.extratags||{}))||FCOLORS[colorIx++%FCOLORS.length];
+    picked.set(k,{name,kind:trail?'trail':'place',color,geometry:g,bbox:[+r.boundingbox[2],+r.boundingbox[0],+r.boundingbox[3],+r.boundingbox[1]],km:trail?km(g):0});
+    fitBox(picked.get(k).bbox);showTab('mine');
   }
-  syncFound();markResults();fitPicked();
+  syncFound();markResults();
+}
+
+/* roads: several can be picked, each in its own color; taken whole from roads.geojson */
+const ROAD_COLORS=['#ffe14d','#4fd1ff','#ff5fa2','#b6f25c','#c49bff','#ff9f43'];
+const roadColor=new Map();
+async function loadRoads(){if(!ROADS)ROADS=await fetch(BASE+'roads.geojson').then(r=>r.json()).catch(()=>({features:[]}));return ROADS;}
+function roadBox(ref){let w=180,s=90,e=-180,n=-90;
+  for(const f of ROADS.features)if(f.properties.ref===ref)for(const l of f.geometry.coordinates)for(const [x,y] of l){w=Math.min(w,x);e=Math.max(e,x);s=Math.min(s,y);n=Math.max(n,y);}
+  return [w,s,e,n];}
+async function toggleRoad(ref,fly){
+  await loadRoads();
+  if(S.roadSel.has(ref)){S.roadSel.delete(ref);roadColor.delete(ref);}
+  else{
+    S.roadSel.add(ref);
+    const used=new Set(roadColor.values());roadColor.set(ref,ROAD_COLORS.find(c=>!used.has(c))||ROAD_COLORS[S.roadSel.size%ROAD_COLORS.length]);
+    if(!S.roads){S.roads=true;press('b-roads',true);}
+    if(fly)fitBox(roadBox(ref),12);
+    showTab('mine');
+  }
+  ROADPICK=fc(ROADS.features.filter(f=>S.roadSel.has(f.properties.ref)).map(f=>({...f,properties:{...f.properties,color:roadColor.get(f.properties.ref)}})));
+  apply();renderMine();markResults();
+}
+const ROAD_CLASS_HE={motorway:'כביש מהיר',trunk:'כביש ראשי',primary:'כביש ראשי',secondary:'כביש אזורי',tertiary:'כביש מקומי'};
+
+/* search: places, marked trails, or road numbers */
+const STYPES={place:['s-place','שם של ישוב, הר או מקום'],trail:['s-trail','שם של שביל, למשל נחל עמוד'],road:['s-road','מספר כביש, למשל 90']};
+function setStype(t){S.stype=t;for(const k in STYPES)press(STYPES[k][0],k===t);$('q').placeholder=STYPES[t][1];$('q').inputMode=t==='road'?'numeric':'text';
+  results.hidden=true;showMsg('');}
+for(const k in STYPES)$(STYPES[k][0]).onclick=()=>setStype(k);
+function showResults(list,label,onPick){
+  results.textContent='';lastList=list;
+  for(const r of list){
+    const li=document.createElement('li'),b=document.createElement('button');b.type='button';
+    const [nm,desc,dot]=label(r);
+    const n=document.createElement('span');n.className='rn';
+    if(dot){const i=document.createElement('i');i.style.cssText=`display:inline-block;width:10px;height:10px;border-radius:50%;background:${dot};margin-inline-end:6px`;n.append(i);}
+    n.append(nm);
+    const d=document.createElement('span');d.className='rd';d.textContent=desc;
+    b.append(n,d);b.onclick=()=>onPick(r);li.append(b);results.append(li);
+  }
+  results.hidden=false;markResults();
 }
 $('sform').addEventListener('submit',async e=>{
   e.preventDefault();
   const q=$('q').value.trim();if(!q||searching)return;
+  if(S.stype==='road'){
+    await loadRoads();
+    const num=q.replace(/[^0-9]/g,'');
+    const refs=ROADS.features.map(f=>f.properties).filter(p=>num&&(p.ref===num||p.ref.startsWith(num)))
+      .sort((a,b)=>(a.ref===num?0:1)-(b.ref===num?0:1)||a.ref.length-b.ref.length||a.ref.localeCompare(b.ref)).slice(0,10);
+    if(!refs.length){results.hidden=true;showMsg('לא מצאתי כביש עם המספר הזה באזור ישראל.');return;}
+    showMsg(refs.length>1?'אפשר לבחור כמה כבישים. כל אחד יסומן בצבע משלו.':'');
+    showResults(refs.map(p=>({road:p.ref,cls:p.class})),r=>['כביש '+r.road,ROAD_CLASS_HE[r.cls]||'כביש',roadColor.get(r.road)],r=>toggleRoad(r.road,true));
+    if(refs.length===1&&refs[0].ref===num&&!S.roadSel.has(num))toggleRoad(num,true);
+    return;
+  }
   searching=true;results.hidden=true;showMsg('מחפש…');
+  const trail=S.stype==='trail';
   try{
-    const u='https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q,format:'jsonv2','accept-language':'he',limit:'8',
-      polygon_geojson:'1',polygon_threshold:'0.0003',viewbox:'34.2,33.4,35.95,29.4',bounded:'0'});
+    const u='https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q,format:'jsonv2','accept-language':'he',limit:trail?'25':'10',
+      polygon_geojson:'1',polygon_threshold:'0.0003',extratags:'1',viewbox:'34.2,33.4,35.95,29.4',bounded:'0'});
     const res=await fetch(u);if(!res.ok)throw new Error(res.status);
-    const list=await res.json();
-    results.textContent='';lastList=list;
-    if(!list.length){showMsg('לא נמצאו תוצאות. נסו שם אחר או כתיב אחר.');return;}
-    showMsg('');
-    for(const r of list){
-      const li=document.createElement('li'),b=document.createElement('button');b.type='button';
-      const parts=r.display_name.split(', ');
-      const n=document.createElement('span');n.className='rn';n.textContent=r.name||parts[0];
-      const d=document.createElement('span');d.className='rd';d.textContent=[TYPE_HE[r.type],parts.slice(1,3).join(', ')].filter(Boolean).join(' · ');
-      b.append(n,d);b.onclick=()=>pick(r);li.append(b);results.append(li);
-    }
-    results.hidden=false;markResults();
-    if(list.length>1)showMsg('אפשר לבחור כמה תוצאות. כל אחת תסומן בצבע משלה.');
+    const list=(await res.json()).filter(r=>trail?r.category==='route':r.category!=='route').slice(0,10);
+    if(!list.length){showMsg(trail?'לא מצאתי שביל מסומן בשם הזה. נסו חלק מהשם, למשל "נחל דוד" או "שביל הגולן".':'לא נמצאו תוצאות. נסו שם אחר או כתיב אחר.');return;}
+    showMsg(list.length>1?'אפשר לבחור כמה תוצאות. כל אחת תסומן בצבע משלה.':'');
+    showResults(list,r=>{const parts=r.display_name.split(', ');
+      const g=r.geojson||{};const k=trail&&g.type&&g.type!=='Point'?kmTxt(km(g))+' ק״מ':'';
+      return [r.name||parts[0],[trail?'שביל מסומן':TYPE_HE[r.type],k,parts.slice(1,3).join(', ')].filter(Boolean).join(' · '),trail?trailColor(r.name,r.extratags||{}):null];},pick);
   }catch(err){showMsg('החיפוש לא הצליח. בדקו את החיבור לאינטרנט ונסו שוב בעוד רגע.');}
   finally{searching=false;}
 });
 $('q').addEventListener('input',()=>{if(!$('q').value){results.hidden=true;showMsg('');}});
+
+/* ---------- "my selections": everything picked, in one list ---------- */
+function showTab(t){
+  press('t-mine',t==='mine');press('t-pins',t==='pins');
+  $('pane-mine').hidden=t!=='mine';$('pane-pins').hidden=t!=='pins';$('rows').hidden=t!=='pins';
+  $('b-clear').hidden=t==='mine'?!mineCount():!pins.length;
+  $('b-clear').textContent=t==='mine'?'ניקוי הכול':'ניקוי';
+}
+$('t-mine').onclick=()=>showTab('mine');
+$('t-pins').onclick=()=>showTab('pins');
+const tabNow=()=>$('pane-mine').hidden?'pins':'mine';
+const mineCount=()=>S.sel.size+picked.size+S.roadSel.size;
+function renderMine(){
+  const ul=$('mine');ul.textContent='';
+  const add=(color,name,kind,fly,remove)=>{
+    const li=document.createElement('li'),i=document.createElement('i'),go=document.createElement('button'),x=document.createElement('button');
+    i.style.background=color;go.className='go';x.className='x';
+    const b=document.createElement('b');b.textContent=name;const k=document.createElement('span');k.textContent=kind;go.append(b,k);go.onclick=fly;
+    x.textContent='×';x.setAttribute('aria-label','הסרת '+name);x.onclick=remove;
+    li.append(i,go,x);ul.append(li);
+  };
+  let area=0;
+  for(const id of S.sel){const f=AREAS.get(id);if(!f)continue;area+=f.properties.area||0;
+    add('#ffd166',f.properties.name,{countries:'מדינה',land:'נוף',regions:'אזור'}[areaKind(id)]+` · כ־${Math.round(f.properties.area).toLocaleString('he-IL')} קמ״ר`,()=>flyToArea(f),()=>toggleSel(id));}
+  for(const [k,p] of picked)
+    add(p.color,p.name,p.kind==='trail'?`שביל · ${kmTxt(p.km)} ק״מ`:'מקום',()=>fitBox(p.bbox),()=>{picked.delete(k);syncFound();markResults();});
+  for(const ref of S.roadSel)
+    add(roadColor.get(ref),'כביש '+ref,'כביש',()=>fitBox(roadBox(ref),12),()=>toggleRoad(ref));
+  const n=mineCount();
+  $('mine-n').textContent=n?String(n):'';
+  $('mineinfo').textContent=n?(area?`שטח האזורים שנבחרו: כ־${Math.round(area).toLocaleString('he-IL')} קמ״ר`:''):'עוד לא נבחר כלום. חפשו מקום, שביל או כביש, או געו באזור, בכביש או במדינה במפה.';
+  if(tabNow()==='mine')$('b-clear').hidden=!n;
+}
+function clearMine(){
+  S.sel.clear();picked.clear();S.roadSel.clear();roadColor.clear();ROADPICK=EMPTY;
+  syncFound();renderSel();apply();markResults();
+}
 
 /* ---------- exact elevation read from the terrain tiles of the current data mode ---------- */
 const tileCache=new Map();
@@ -808,7 +898,7 @@ function render(){
     const b=li.querySelector('button');b.textContent='×';b.setAttribute('aria-label',`מחיקת נקודה ${i+1}`);b.onclick=()=>removePin(i);
     rows.appendChild(li);
   });
-  $('b-clear').hidden=!pins.length;
+  if(tabNow()==='pins')$('b-clear').hidden=!pins.length;
   const P=pins[pins.length-1];
   if(!P){$('last').textContent='—';$('lastco').textContent='געו במפה כדי לסמן נקודה';$('lastnote').textContent='';return;}
   $('last').textContent=hText(P);
@@ -826,95 +916,21 @@ function readPin(P){
   elevationAt(P.lng,P.lat).then(z=>{P.z=z;render();}).catch(e=>{P.err=e&&e.message==='outside'?'outside':true;render();});
 }
 function removePin(i){pins.splice(i,1)[0].marker.remove();render();}
-$('b-clear').onclick=()=>{while(pins.length)removePin(pins.length-1);};
-// tap a road (its number or the line): highlight that road; tap it again, or anywhere off the roads, to undo
+$('b-clear').onclick=()=>{if(tabNow()==='mine'){clearMine();return;}while(pins.length)removePin(pins.length-1);};
+// tap a road (its number or the line) to add it to the picked roads, tap it again to drop it
 function roadAt(pt){
   if(!S.roads)return null;
   const box=[[pt.x-10,pt.y-10],[pt.x+10,pt.y+10]];
   const f=map.queryRenderedFeatures(box,{layers:['road-shields','road-pick-hit']}).find(f=>f.properties.ref);
   return f?String(f.properties.ref):null;
 }
-async function pickRoad(ref){
-  S.road=ref;ROADPICK=EMPTY;
-  if(ref){
-    if(!ROADS)ROADS=await fetch(BASE+'roads.geojson').then(r=>r.json()).catch(()=>({features:[]}));
-    ROADPICK=fc(ROADS.features.filter(f=>f.properties.ref===ref));
-  }
-  apply();
-}
-/* marked hiking trails: tap near one (with "שבילים" on) and OpenStreetMap is asked which marked trails pass there */
-const TRAIL_COLORS={red:'#e8443a',blue:'#2f7fe0',green:'#2fae4a',black:'#222222',orange:'#ff8a3d',yellow:'#f2c230',purple:'#9b59d0',white:'#f4f4f4',brown:'#9a6b3c'};
-function trailColor(t){
-  if(/שביל ישראל/.test(t.name||'')||/israel national trail/i.test(t['name:en']||''))return TRAIL_COLORS.orange;
-  const c=((t['osmc:symbol']||'').split(':')[0]||t.colour||'').toLowerCase();
-  return TRAIL_COLORS[c]||(c.startsWith('#')?c:'#ff8a3d');
-}
-function km(lines){let d=0;for(const l of lines)for(let i=1;i<l.length;i++){const a=l[i-1],b=l[i];
-  d+=Math.hypot((b[0]-a[0])*Math.cos((a[1]+b[1])/2*Math.PI/180)*111.32,(b[1]-a[1])*110.57);}return d;}
-// several public Overpass servers; the first that answers wins (each is often busy)
-const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];
-async function overpass(q){
-  let last='';
-  for(const url of OVERPASS){
-    const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),15000);
-    try{const r=await fetch(url+'?data='+encodeURIComponent(q),{signal:ctl.signal});clearTimeout(t);
-      if(r.ok)return await r.json();last=url.split('/')[2]+' '+r.status;}
-    catch(e){clearTimeout(t);last=url.split('/')[2]+' '+(e.name==='AbortError'?'timeout':e.message);}
-  }
-  throw new Error(last);
-}
-async function trailsAt(lngLat){
-  // search radius: about 22 screen pixels (a finger), at least 40 m.
-  // First the paths near the tap, then the marked routes those paths belong to.
-  const m=Math.max(40,22*40075016*Math.cos(lngLat.lat*Math.PI/180)/(512*2**map.getZoom()));
-  const at=`${Math.round(m)},${lngLat.lat.toFixed(5)},${lngLat.lng.toFixed(5)}`;
-  const q=`[out:json][timeout:25];(way(around:${at})[highway];)->.w;(rel(bw.w)[route~"^(hiking|foot)$"];rel(around:${at})[route~"^(hiking|foot)$"];);out geom tags;`;
-  const j=await overpass(q);
-  return (j.elements||[]).map(el=>{
-    const lines=(el.members||[]).filter(x=>x.type==='way'&&x.geometry).map(x=>x.geometry.map(p=>[p.lon,p.lat]));
-    const t=el.tags||{},color=trailColor(t);
-    return {id:el.id,name:t['name:he']||t.name||t['name:en']||'מסלול ללא שם',color,km:km(lines),
-      feature:{type:'Feature',properties:{color},geometry:{type:'MultiLineString',coordinates:lines}}};
-  }).filter(x=>x.feature.geometry.coordinates.length);
-}
-const kmTxt=k=>k<10?k.toFixed(1):String(Math.round(k));
-function pickTrail(t){
-  TRAILPICK=t?fc([t.feature]):EMPTY;apply();
-  showMsg(t?`${t.name} · ${kmTxt(t.km)} ק״מ. לחיצה במקום ריק מחזירה את כל השבילים.`:'');
-}
-function chooseTrail(list){
-  results.textContent='';
-  for(const t of list){
-    const li=document.createElement('li'),b=document.createElement('button'),n=document.createElement('span'),d=document.createElement('span'),dot=document.createElement('i');
-    n.className='rn';d.className='rd';dot.style.cssText=`display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-inline-end:6px`;
-    n.append(dot,t.name);d.textContent=`מסלול מסומן · ${kmTxt(t.km)} ק״מ`;
-    b.append(n,d);b.onclick=()=>{results.hidden=true;pickTrail(t);};li.append(b);results.append(li);
-  }
-  results.hidden=false;showMsg('כמה מסלולים עוברים כאן. בחרו אחד:');
-}
-async function onTrailTap(e){
-  const near=[[e.point.x-10,e.point.y-10],[e.point.x+10,e.point.y+10]];
-  if(TRAILPICK.features.length&&map.queryRenderedFeatures(near,{layers:['trail-pick']}).length){pickTrail(null);return true;}
-  showMsg('מחפש מסלולים מסומנים בנקודה…');
-  let list;
-  try{list=await trailsAt(e.lngLat);}catch(err){showMsg('לא הצלחתי לשאול את OpenStreetMap על מסלולים ('+err.message+'). נסו שוב בעוד רגע.');return true;}
-  if(!list.length){if(TRAILPICK.features.length){showMsg('');pickTrail(null);return true;}
-    showMsg('לא נמצא כאן מסלול מסומן. נסו ללחוץ קרוב יותר לקו הצבעוני.');return true;}
-  if(list.length===1)pickTrail(list[0]);else chooseTrail(list);
-  return true;
-}
-map.on('click',async e=>{if(!results.hidden){results.hidden=true;return;}
+map.on('click',e=>{if(!results.hidden){results.hidden=true;return;}
   const ref=roadAt(e.point);
-  if(ref||S.road){
-    await pickRoad(ref&&ref!==S.road?ref:'');
-    showMsg(S.road?`כביש ${S.road} מודגש. לחיצה במקום ריק מחזירה את כל הכבישים.`:'');
-    if(ref||!S.road)return;
-  }
-  if(S.trails&&await onTrailTap(e))return;
-  if(S.regions||S.countries){toggleSel(areaAt(e.lngLat),false);return;}
-  addPin(e.lngLat);});
+  if(ref){toggleRoad(ref,false);return;}
+  if(S.regions||S.land||S.countries){toggleSel(areaAt(e.lngLat),false);return;}
+  addPin(e.lngLat);showTab('pins');});
 window.reliefMap=map;
-render();
+render();renderMine();
 })();
 </script>
 </body>
