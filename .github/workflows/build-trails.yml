@@ -1,0 +1,44 @@
+name: Build trails index
+
+# Builds trails/: Israel's marked hiking trails from OpenStreetMap, for the site's trail search.
+# Runs when the script or this file changes, or by hand.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-trails.yml
+      - tools/build_trails.py
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-trails
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install osmium shapely
+      - name: Download OpenStreetMap extract
+        run: wget -q -O osm.pbf https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf && ls -la osm.pbf
+      - name: Build
+        run: python tools/build_trails.py osm.pbf trails && ls trails | wc -l && du -sh trails && head -c 600 trails/index.json
+      - name: Commit
+        run: |
+          rm -f osm.pbf
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A trails
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "Build trails index"
+          git pull --rebase origin main
+          git push origin HEAD:main
