@@ -791,6 +791,18 @@ function pick(r){
   syncFound();markResults();
 }
 
+/* marked trails: searched in trails/index.json (built from OpenStreetMap by build-trails.yml); a trail's lines load when it is picked */
+let TRAILS=null;
+async function loadTrails(){if(!TRAILS)TRAILS=await fetch(BASE+'trails/index.json').then(r=>r.ok?r.json():[]).catch(()=>[]);return TRAILS;}
+const norm=s=>(s||'').toLowerCase().replace(/[\u0591-\u05C7"'״׳()\-–]/g,' ').replace(/\s+/g,' ').trim();
+async function pickTrailEntry(r){
+  const k=keyOf(r),t=r.trail;
+  if(picked.has(k)){picked.delete(k);syncFound();markResults();return;}
+  let g;try{g=await fetch(BASE+'trails/'+t.id+'.json').then(x=>{if(!x.ok)throw 0;return x.json();});}catch(e){showMsg('לא הצלחתי לטעון את השביל.');return;}
+  picked.set(k,{name:t.n,kind:'trail',color:TRAIL_COLORS[t.c]||FCOLORS[colorIx++%FCOLORS.length],geometry:g,bbox:t.b,km:t.km});
+  fitBox(t.b);showTab('mine');syncFound();markResults();
+}
+
 /* roads: several can be picked, each in its own color; taken whole from roads.geojson */
 const ROAD_COLORS=['#ffe14d','#4fd1ff','#ff5fa2','#b6f25c','#c49bff','#ff9f43'];
 const roadColor=new Map();
@@ -845,8 +857,20 @@ $('sform').addEventListener('submit',async e=>{
     if(refs.length===1&&refs[0].ref===num&&!S.roadSel.has(num))toggleRoad(num,true);
     return;
   }
+  if(S.stype==='trail'){
+    await loadTrails();
+    if(!TRAILS.length){showMsg('רשימת השבילים לא נטענה. נסו לרענן את הדף.');return;}
+    const words=norm(q).split(' ').filter(Boolean);
+    const hits=TRAILS.map(t=>{const h=norm(t.n+' '+(t.en||''));if(!words.every(w=>h.includes(w)))return null;
+        return {t,score:norm(t.n).startsWith(words[0])?0:1};}).filter(Boolean)
+      .sort((a,b)=>a.score-b.score||b.t.km-a.t.km).slice(0,15).map(x=>({osm_type:'t',osm_id:x.t.id,trail:x.t}));
+    if(!hits.length){results.hidden=true;showMsg('לא מצאתי שביל מסומן בשם הזה. נסו חלק מהשם, למשל "עמוד" או "הגולן".');return;}
+    showMsg(hits.length>1?'אפשר לבחור כמה שבילים. כל אחד יסומן בצבע הסימון שלו.':'');
+    showResults(hits,r=>[r.trail.n,`שביל מסומן · ${kmTxt(r.trail.km)} ק״מ`,TRAIL_COLORS[r.trail.c]||'#ff8a3d'],pickTrailEntry);
+    return;
+  }
   searching=true;results.hidden=true;showMsg('מחפש…');
-  const trail=S.stype==='trail';
+  const trail=false;
   try{
     const u='https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q,format:'jsonv2','accept-language':'he',limit:trail?'25':'10',
       polygon_geojson:'1',polygon_threshold:'0.0003',extratags:'1',viewbox:'34.2,33.4,35.95,29.4',bounded:'0'});
