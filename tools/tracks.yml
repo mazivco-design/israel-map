@@ -1,0 +1,24 @@
+# Planetiler custom-map schema: dirt roads (highway=track) of Israel with their difficulty tags,
+# for the site's "4×4" layer. Built by .github/workflows/build-tracks.yml into map/tracks.pmtiles.
+schema_name: Tracks
+schema_description: Dirt roads with tracktype / 4wd_only / smoothness / surface
+attribution: <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap</a>
+sources:
+  osm:
+    type: osm
+    url: geofabrik:israel-and-palestine
+layers:
+  - id: tracks
+    features:
+      - source: osm
+        geometry: line
+        min_zoom: 9
+        include_when:
+          highway: track
+        attributes:
+          - key: tracktype
+          - key: 4wd_only
+          - key: smoothness
+          - key: surface
+          - key: name
+          - key: name:he

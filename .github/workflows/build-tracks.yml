@@ -1,0 +1,48 @@
+name: Build 4x4 tracks
+
+# Builds map/tracks.pmtiles: Israel's dirt roads with their difficulty tags (tools/tracks.yml),
+# from OpenStreetMap via Planetiler. Runs when the schema or this file changes, or by hand.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-tracks.yml
+      - tools/tracks.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-tracks
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Download Planetiler
+        run: wget -q -O planetiler.jar https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar
+      - name: Build tracks tiles
+        run: |
+          mkdir -p map
+          java -Xmx4g -jar planetiler.jar generate-custom --schema=tools/tracks.yml --download \
+            --output=map/tracks.pmtiles --maxzoom=14 --force
+          ls -la map/tracks.pmtiles
+          echo "tracks bytes=$(stat -c %s map/tracks.pmtiles) built=$(date -u +%F)" > map/tracks.txt
+      - name: Commit
+        run: |
+          rm -rf data planetiler.jar
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add map/tracks.pmtiles map/tracks.txt
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "Build 4x4 tracks tiles"
+          git pull --rebase origin main
+          git push origin HEAD:main
