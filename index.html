@@ -60,6 +60,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 [hidden]{display:none!important}
 #stypes{margin-bottom:6px}
 #b-clear{white-space:nowrap}
+.tk{display:inline-flex;align-items:center;gap:5px;font-size:.8rem}.tk i{width:16px;height:4px;border-radius:2px}
+#tracknote{color:var(--muted);font-size:.74rem}
 #stypes button,#log .seg button{font-size:.8rem;padding:4px 10px}
 #mine-n:empty{display:none}
 #mine-n{display:inline-block;min-width:1.3em;border-radius:999px;background:rgba(0,0,0,.35);font-size:.72rem;padding:0 4px;margin-inline-start:2px}
@@ -167,6 +169,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <button id="b-lbl" aria-pressed="true">שמות</button>
     <button id="b-roads" aria-pressed="false">כבישים</button>
     <button id="b-trails" aria-pressed="false">שבילים</button>
+    <button id="b-tracks" aria-pressed="false" title="דרכי עפר לפי רמת קושי">4×4</button>
     <button id="b-regions" aria-pressed="false" title="האזורים הגדולים: הגליל, השרון, הנגב…">אזורים</button>
     <button id="b-land" aria-pressed="false" title="מכתשים, בקעות, עמקים והרים">נוף</button>
     <button id="b-countries" aria-pressed="false">מדינות</button>
@@ -182,6 +185,13 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <button id="sun-plus" class="step" aria-label="חצי שעה קדימה">+</button>
     <span id="sunv">—</span>
     <span id="sunnote"></span>
+  </div>
+  <div class="ctl" id="trackctl" hidden>
+    <span class="tk"><i style="background:#7ddc5a"></i>כל רכב</span>
+    <span class="tk"><i style="background:#ffc23a"></i>רכב גבוה</span>
+    <span class="tk"><i style="background:#ff4d4d"></i>4×4 בלבד</span>
+    <span class="tk"><i style="background:#d8c9a8"></i>לא ידוע</span>
+    <span id="tracknote"></span>
   </div>
   <div class="ctl" id="selctl" hidden>
     <select id="addsel" aria-label="הוספה לבחירה"><option value="">הוספה לבחירה…</option></select>
@@ -236,7 +246,7 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,tracks:false,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
 let ROADPICK=EMPTY,ROADS=null;   // picked roads, whole (from roads.geojson, made by tools/build_roads.py)
 let REG=[],REG_BIG=[],REG_SUB=[],POIS=EMPTY,CTR=[],FOUND=EMPTY;   // REG = small regions first (they win a click), then the large ones
 const fc=f=>({type:'FeatureCollection',features:f});
@@ -251,6 +261,13 @@ const SHADE_MULTI={'hillshade-method':'multidirectional','hillshade-illumination
   'hillshade-illumination-direction':[315,270,0,45],'hillshade-illumination-altitude':[35,40,40,45],
   // no fades: a fade between the 4-light and 1-light values is not possible
   'hillshade-highlight-color-transition':{duration:0},'hillshade-shadow-color-transition':{duration:0}};
+// difficulty of a dirt road from its OpenStreetMap tags (tracktype grade1-5, 4wd_only, smoothness)
+const TRACK_DIFF=['case',
+  ['any',['==',['get','4wd_only'],'yes'],['in',['coalesce',['get','tracktype'],''],['literal',['grade4','grade5']]],
+    ['in',['coalesce',['get','smoothness'],''],['literal',['very_bad','horrible','very_horrible','impassable']]]],'hard',
+  ['any',['==',['get','tracktype'],'grade3'],['==',['get','smoothness'],'bad']],'mid',
+  ['any',['in',['coalesce',['get','tracktype'],''],['literal',['grade1','grade2']]],['in',['coalesce',['get','smoothness'],''],['literal',['excellent','good','intermediate']]]],'easy',
+  'unknown'];
 function buildStyle(){
   const M=SRC[S.data];
   const dem={type:'raster-dem',tiles:[M.dem],encoding:'terrarium',tileSize:256,maxzoom:M.demMax};
@@ -261,7 +278,7 @@ function buildStyle(){
     sources:{omt:M.vector,dem:{...dem},demShade:{...dem},
       regions:{type:'geojson',data:fc(REG)},regionLabels:{type:'geojson',data:labelsOf(REG)},
       countries:{type:'geojson',data:fc(CTR)},countryLabels:{type:'geojson',data:labelsOf(CTR)},
-      found:{type:'geojson',data:FOUND},roadpick:{type:'geojson',data:ROADPICK},pois:{type:'geojson',data:POIS},
+      found:{type:'geojson',data:FOUND},roadpick:{type:'geojson',data:ROADPICK},tracks:{type:'vector',url:'pmtiles://'+BASE+'map/tracks.pmtiles'},pois:{type:'geojson',data:POIS},
       // satellite imagery streams from Esri, so it exists in global mode only
       ...(S.data==='global'?{sat:SAT}:{})},
     sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
@@ -297,6 +314,11 @@ function buildStyle(){
       {id:'roads-minor',type:'line',source:'omt','source-layer':'transportation',minzoom:11,
         filter:['in',['get','class'],['literal',['secondary','tertiary','minor']]],
         paint:{'line-color':'#f2e6c9','line-opacity':.28,'line-width':['interpolate',['linear'],['zoom'],11,.3,15,1.4]}},
+      // dirt roads coloured by how hard they are (map/tracks.pmtiles, built from OpenStreetMap by build-tracks.yml)
+      {id:'tracks-4x4',type:'line',source:'tracks','source-layer':'tracks',minzoom:9,layout:{...hide,'line-join':'round','line-cap':'round'},
+        paint:{'line-color':['match',TRACK_DIFF,'hard','#ff4d4d','mid','#ffc23a','easy','#7ddc5a','#d8c9a8'],
+          'line-opacity':['match',TRACK_DIFF,'unknown',.7,.95],
+          'line-width':['interpolate',['linear'],['zoom'],9,.8,12,1.8,15,4]}},
       // "roads" layer: stronger road lines by class, with route numbers in small shields (see makeShield)
       {id:'roads-hl-case',type:'line',source:'omt','source-layer':'transportation',minzoom:6,layout:{...hide,'line-join':'round','line-cap':'round'},
         filter:['in',['get','class'],['literal',['motorway','trunk','primary','secondary','tertiary']]],
@@ -387,6 +409,7 @@ function apply(){
   LABEL_LAYERS.forEach(id=>vis(id,S.labels));
   vis('trails-paths',S.trails);
   ROAD_LAYERS.forEach(id=>vis(id,S.roads));
+  vis('tracks-4x4',S.tracks);
   // picked roads stand out, the others fade
   const pick=S.roads&&S.roadSel.size>0;
   if(map.getSource('roadpick'))map.getSource('roadpick').setData(ROADPICK);
@@ -435,6 +458,9 @@ $('b-sat').onclick=()=>{S.satellite=!S.satellite;press('b-sat',S.satellite);appl
 $('b-lbl').onclick=()=>{S.labels=!S.labels;press('b-lbl',S.labels);apply();};
 $('b-roads').onclick=()=>{S.roads=!S.roads;press('b-roads',S.roads);apply();};
 $('b-trails').onclick=()=>{S.trails=!S.trails;press('b-trails',S.trails);apply();};
+$('b-tracks').onclick=()=>{S.tracks=!S.tracks;press('b-tracks',S.tracks);$('trackctl').hidden=!S.tracks;
+  $('tracknote').textContent=map.getZoom()<9?'התקרבו כדי לראות את הדרכים':'';apply();};
+map.on('zoomend',()=>{if(S.tracks)$('tracknote').textContent=map.getZoom()<9?'התקרבו כדי לראות את הדרכים':'';});
 $('b-reset').onclick=()=>map.flyTo({...HOME,duration:1600});
 
 function setDataMode(m,first){
