@@ -80,7 +80,12 @@ def main(pbf, out):
         lines = [LineString(w.geom[i]) for i in R["ways"] if i in w.geom and len(w.geom[i]) > 1]
         if not name or not lines:
             continue
-        g = linemerge(unary_union(lines))
+        try:
+            u = unary_union(lines)
+            g = linemerge(u) if u.geom_type == "MultiLineString" else u
+        except Exception as ex:                                  # a broken relation should not stop the build
+            print("skip", rid, ex)
+            continue
         g = g if g.geom_type == "MultiLineString" else MultiLineString([g]) if g.geom_type == "LineString" else None
         if g is None:
             continue
