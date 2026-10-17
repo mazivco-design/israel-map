@@ -3,10 +3,11 @@
 /* The flight moves a position along the profile's points (PROF.pts). Each frame the camera is placed a little
    behind that position, looking along the route, with a smoothed heading so bends do not jerk.
    Speed is in route-km per real second; "low" view sits near the ground, "high" is a wider look. */
-const FLY={on:false,pos:0,speed:1,view:'low',raf:0,last:0,bearing:null,tour:null};
+const FLY={on:false,pos:0,speed:1,view:'low',raf:0,last:0,bearing:null,alt:null,tour:null};
 const FLY_KMPS={1:.08,2:.16,4:.32};                       // ×1: a 10 km trail takes about 2 minutes
 
 function flyUi(){
+  $('prof').classList.toggle('flying',FLY.on);drawProfile();
   $('fly-play').textContent=FLY.on?'⏸ עצירה':'▶ טיסה';press('fly-play',FLY.on);
   for(const v of [1,2,4])press('fly-x'+v,FLY.speed===v);
   press('fly-low',FLY.view==='low');press('fly-high',FLY.view==='high');
@@ -35,14 +36,23 @@ function placeCamera(d){
   const p=routePos(d),h=headingAt(d);
   FLY.bearing=FLY.bearing==null?h:lerpAngle(FLY.bearing,h,.06);
   const low=FLY.view==='low';
-  // the camera hangs behind the point (along the smoothed heading) and above the ground there, looking at a spot
-  // a little short of the point, so the point itself shows in the open part of the screen above the chart
-  const back=low?.6:1.8, height=low?220:1000, rad=Math.PI/180, bl=(FLY.bearing+180)*rad;
+  // a drone-like view: the camera trails the point by about a kilometre, not far above the ground, looking
+  // almost at the horizon so the hills stand up against the sky. "high" is further back and higher.
+  const back=low?1.1:2.8, height=low?140:900, rad=Math.PI/180, bl=(FLY.bearing+180)*rad;
   const cam=[p.lng+Math.sin(bl)*back/(111.32*Math.cos(p.lat*rad)),p.lat+Math.cos(bl)*back/110.57];
   const ground=ll=>{const z=map.queryTerrainElevation(ll);return isFinite(z)?z:0;};
-  const k=.45, look=[p.lng-(p.lng-cam[0])*k,p.lat-(p.lat-cam[1])*k];
-  try{map.jumpTo(map.calculateCameraOptionsFromTo(cam,ground(cam)+height,look,ground(look)));}
-  catch(e){map.jumpTo({center:[p.lng,p.lat],bearing:FLY.bearing,pitch:low?70:55,zoom:low?14:12.5});}
+  // the camera's own height follows the ground under it, but smoothed, so it does not bob on every bump,
+  // and never drops below the point it is looking at
+  const gz=ground(cam),pz=ground([p.lng,p.lat]);
+  const wantAlt=Math.max(gz+height,pz+height*.6);
+  FLY.alt=FLY.alt==null?wantAlt:FLY.alt+(wantAlt-FLY.alt)*.08;
+  // look at a spot short of the point, so the point shows in the open part of the screen above the chart
+  const k=.4, look=[p.lng-(p.lng-cam[0])*k,p.lat-(p.lat-cam[1])*k];
+  try{
+    const o=map.calculateCameraOptionsFromTo(cam,FLY.alt,look,ground(look));
+    if(o.pitch>79)o.pitch=79;                           // the map allows 80°; a hair less keeps the sky in view without clamping jumps
+    map.jumpTo(o);
+  }catch(e){map.jumpTo({center:[p.lng,p.lat],bearing:FLY.bearing,pitch:low?75:60,zoom:low?14:12.5});}
   // keep the moving dot and the profile in step
   PROF.hover=p.i;
   if(!PROF.hoverMarker){const el=document.createElement('div');el.className='profdot';PROF.hoverMarker=new maplibregl.Marker({element:el}).setLngLat([p.lng,p.lat]).addTo(map);}
@@ -51,7 +61,7 @@ function placeCamera(d){
 function flyStart(){
   if(!PROF.pts)return;
   if(FLY.pos>=PROF.L-1e-6)FLY.pos=0;
-  FLY.on=true;FLY.last=performance.now();FLY.bearing=map.getBearing();
+  FLY.on=true;FLY.last=performance.now();FLY.bearing=map.getBearing();FLY.alt=null;
   if(playT)setPlay(false);                                  // the sun animation and the flight do not run together
   flyUi();FLY.raf=requestAnimationFrame(flyFrame);
 }
