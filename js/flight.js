@@ -60,7 +60,7 @@ function placeCamera(d,immediate){
     const center=[p.lng+Math.sin(a)*C.offDist/(111.32*Math.cos(p.lat*rad)),p.lat+Math.cos(a)*C.offDist/110.57];
     map.jumpTo({center,zoom:C.zoom,pitch:C.pitch,bearing:FLY.bearing});
     PROF.hover=p.i;
-    if(!PROF.hoverMarker){const el=document.createElement('div');el.className='profdot';PROF.hoverMarker=new maplibregl.Marker({element:el}).setLngLat([p.lng,p.lat]).addTo(map);}
+    if(!PROF.hoverMarker){const el=document.createElement('div');el.className='profdot';PROF.hoverMarker=new maplibregl.Marker({element:el,opacityWhenCovered:'1'}).setLngLat([p.lng,p.lat]).addTo(map);}
     PROF.hoverMarker.setLngLat([p.lng,p.lat]);drawProfile();
     return;
   }
@@ -85,7 +85,7 @@ function placeCamera(d,immediate){
   }catch(e){map.jumpTo({center:[p.lng,p.lat],bearing:FLY.bearing,pitch:low?75:60,zoom:low?14:12.5});}
   // keep the moving dot and the profile in step
   PROF.hover=p.i;
-  if(!PROF.hoverMarker){const el=document.createElement('div');el.className='profdot';PROF.hoverMarker=new maplibregl.Marker({element:el}).setLngLat([p.lng,p.lat]).addTo(map);}
+  if(!PROF.hoverMarker){const el=document.createElement('div');el.className='profdot';PROF.hoverMarker=new maplibregl.Marker({element:el,opacityWhenCovered:'1'}).setLngLat([p.lng,p.lat]).addTo(map);}
   PROF.hoverMarker.setLngLat([p.lng,p.lat]);drawProfile();
 }
 function flyStart(){

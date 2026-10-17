@@ -19,6 +19,23 @@ BBOX = (34.0, 29.3, 36.2, 33.6)
 RANK = {"motorway": 0, "trunk": 1, "primary": 2, "secondary": 3, "tertiary": 4}
 
 
+def one_carriageway(g, near=0.0007, min_km=0.25):
+    """A divided road comes as two parallel lines (plus ramps). Keep the longer line of each pair and drop
+    pieces that run alongside something already kept, so the road reads as one centreline for the
+    elevation profile and the flight. `near` ~70 m in degrees."""
+    lines = sorted(g.geoms, key=lambda l: -l.length)
+    kept = []
+    for l in lines:
+        if l.length * 111 < min_km:                      # ramps and links
+            continue
+        if kept:
+            k = unary_union(kept).buffer(near)
+            if l.intersection(k).length > 0.6 * l.length:   # mostly alongside a kept line: the other carriageway
+                continue
+        kept.append(l)
+    return MultiLineString(kept) if kept else MultiLineString([lines[0]])
+
+
 def main():
     f = open("map/israel.pmtiles", "rb")
     rd = Reader(MmapSource(f))
@@ -58,9 +75,12 @@ def main():
     feats = []
     for ref, ls in pieces.items():
         u = unary_union(ls)
-        g = (linemerge(u) if u.geom_type == "MultiLineString" else u).simplify(0.00008)   # ~8 m
+        g = linemerge(u) if u.geom_type == "MultiLineString" else u
         if g.is_empty:
             continue
+        if isinstance(g, LineString):
+            g = MultiLineString([g])
+        g = one_carriageway(g).simplify(0.00008)   # ~8 m
         if isinstance(g, LineString):
             g = MultiLineString([g])
         geom = mapping(g)

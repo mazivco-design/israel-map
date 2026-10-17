@@ -18,9 +18,13 @@ function chainRoute(g){
       const far=front?(flip?p[p.length-1]:p[0]):(flip?p[0]:p[p.length-1]);
       if(d2(front?B:A,far)<=span)continue;
       const d=d2(front?A:B,end);if(!best||d<best.d)best={d,i,flip,front};}});
-    if(!best||best.d>(0.03)**2)break;                // nothing within ~3 km: the rest is not part of this line
+    if(!best||best.d>(0.075)**2)break;               // nothing within ~8 km (a road may lose its number through a city): the rest is not part of this line
     let p=parts.splice(best.i,1)[0];if(best.flip)p=p.reverse();
-    line=best.front?p.concat(line):line.concat(p);
+    // pieces from neighbouring map tiles overlap a little: drop the part of the new piece that lies back along the line
+    const trim=(seg,end,prev)=>{const dir=[(end[0]-prev[0])*Math.cos(end[1]*Math.PI/180),end[1]-prev[1]];let k=0;
+      while(k<seg.length-1){const v=[(seg[k][0]-end[0])*Math.cos(end[1]*Math.PI/180),seg[k][1]-end[1]];if(v[0]*dir[0]+v[1]*dir[1]>0)break;k++;}return seg.slice(k);};
+    if(best.front){const q=trim(p.slice().reverse(),line[0],line[1]).reverse();line=q.concat(line);}
+    else line=line.concat(trim(p,line[line.length-1],line[line.length-2]));
   }
   return line;
 }
@@ -103,7 +107,7 @@ function profIndex(ev){const r=$('profcv').getBoundingClientRect(),x=ev.clientX-
   return d-PROF.pts[lo].d<PROF.pts[hi].d-d?lo:hi;}
 function setHover(i){
   PROF.hover=i;const p=PROF.pts[i];
-  if(!PROF.hoverMarker){const el=document.createElement('div');el.className='profdot';PROF.hoverMarker=new maplibregl.Marker({element:el}).setLngLat([p.lng,p.lat]).addTo(map);}
+  if(!PROF.hoverMarker){const el=document.createElement('div');el.className='profdot';PROF.hoverMarker=new maplibregl.Marker({element:el,opacityWhenCovered:'1'}).setLngLat([p.lng,p.lat]).addTo(map);}
   PROF.hoverMarker.setLngLat([p.lng,p.lat]);drawProfile();
 }
 function markPoint(i){
