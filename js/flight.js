@@ -3,14 +3,20 @@
 /* The flight moves a position along the profile's points (PROF.pts). Each frame the camera is placed a little
    behind that position, looking along the route, with a smoothed heading so bends do not jerk.
    Speed is in route-km per real second; "low" view sits near the ground, "high" is a wider look. */
-const FLY={on:false,pos:0,speed:1,view:'low',raf:0,last:0,bearing:null,alt:null,tour:null};
+const FLY={on:false,pos:0,speed:1,view:'low',raf:0,last:0,bearing:null,alt:null,tour:null,
+  follow:false,          // "עקוב": scrubbing the chart carries the camera along
+  cam:null,              // the viewer's own camera, captured when they move the map in follow mode (see captureCam)
+  dirMode:'route'};      // 'route': the view turns with the trail; 'fixed': it keeps the compass direction the viewer set
 const FLY_KMPS={1:.08,2:.16,4:.32};                       // ×1: a 10 km trail takes about 2 minutes
 
 function flyUi(){
   $('prof').classList.toggle('flying',FLY.on);drawProfile();
   $('fly-play').textContent=FLY.on?'⏸ עצירה':'▶ טיסה';press('fly-play',FLY.on);
   for(const v of [1,2,4])press('fly-x'+v,FLY.speed===v);
-  press('fly-low',FLY.view==='low');press('fly-high',FLY.view==='high');
+  press('fly-low',!FLY.cam&&FLY.view==='low');press('fly-high',!FLY.cam&&FLY.view==='high');
+  press('fly-follow',FLY.follow);press('fly-dir',FLY.dirMode==='fixed');
+  $('fly-dir').textContent=FLY.dirMode==='fixed'?'כיוון קבוע':'כיוון עם הדרך';
+  $('fly-note').textContent=FLY.cam?'המצלמה בזווית שקבעת. "קרוב" או "מלמעלה" מחזירים למבט הרגיל.':FLY.follow?'סובב, הטה או קרב את המפה כרצונך; מכאן המצלמה תשמור על הזווית הזאת לאורך המסלול.':'';
 }
 function routePos(d){            // interpolated point on the route at distance d (km)
   const P=PROF.pts;let lo=0,hi=P.length-1;
@@ -32,9 +38,33 @@ function flyFrame(now){
   placeCamera(FLY.pos);
   FLY.raf=requestAnimationFrame(flyFrame);
 }
-function placeCamera(d){
+/* the viewer's own camera, relative to the moving point: zoom, pitch, the direction (relative to the trail's heading
+   or fixed), and where the point sits on screen (as a ground offset from the map centre, turned with the heading) */
+function captureCam(){
+  if(!PROF.pts)return;
+  const p=routePos(FLY.pos),h=headingAt(FLY.pos),c=map.getCenter(),rad=Math.PI/180;
+  const dx=(c.lng-p.lng)*111.32*Math.cos(p.lat*rad),dy=(c.lat-p.lat)*110.57;      // km, east/north
+  const ang=Math.atan2(dx,dy)*180/Math.PI;                                            // bearing of the offset
+  FLY.cam={zoom:map.getZoom(),pitch:map.getPitch(),bearing:map.getBearing(),bearingRel:((map.getBearing()-h)%360+360)%360,
+    offDist:Math.hypot(dx,dy),offRel:((ang-h)%360+360)%360};
+  FLY.bearing=map.getBearing();flyUi();
+}
+function placeCamera(d,immediate){
   const p=routePos(d),h=headingAt(d);
-  FLY.bearing=FLY.bearing==null?h:lerpAngle(FLY.bearing,h,.06);
+  if(FLY.cam){
+    const C=FLY.cam,rad=Math.PI/180;
+    const want=C.bearingRel!=null&&FLY.dirMode==='route'?(h+C.bearingRel)%360:C.bearing;
+    FLY.bearing=FLY.bearing==null||immediate?want:lerpAngle(FLY.bearing,want,.08);
+    // the point keeps its place on screen: the centre is offset from it the same way, turned with the current bearing
+    const a=(FLY.dirMode==='route'?h+C.offRel:C.bearing-C.bearingRel+C.offRel)*rad;
+    const center=[p.lng+Math.sin(a)*C.offDist/(111.32*Math.cos(p.lat*rad)),p.lat+Math.cos(a)*C.offDist/110.57];
+    map.jumpTo({center,zoom:C.zoom,pitch:C.pitch,bearing:FLY.bearing});
+    PROF.hover=p.i;
+    if(!PROF.hoverMarker){const el=document.createElement('div');el.className='profdot';PROF.hoverMarker=new maplibregl.Marker({element:el}).setLngLat([p.lng,p.lat]).addTo(map);}
+    PROF.hoverMarker.setLngLat([p.lng,p.lat]);drawProfile();
+    return;
+  }
+  FLY.bearing=FLY.bearing==null||immediate?h:lerpAngle(FLY.bearing,h,.06);
   const low=FLY.view==='low';
   // a drone-like view: the camera trails the point by about a kilometre, not far above the ground, looking
   // almost at the horizon so the hills stand up against the sky. "high" is further back and higher.
@@ -68,12 +98,17 @@ function flyStart(){
 function flyStop(){FLY.on=false;cancelAnimationFrame(FLY.raf);if(FLY.tour){clearTimeout(FLY.tour);FLY.tour=null;}flyUi();}
 $('fly-play').onclick=()=>FLY.on?flyStop():flyStart();
 for(const v of [1,2,4])$('fly-x'+v).onclick=()=>{FLY.speed=v;flyUi();};
-$('fly-low').onclick=()=>{FLY.view='low';flyUi();if(FLY.on)placeCamera(FLY.pos);};
-$('fly-high').onclick=()=>{FLY.view='high';flyUi();if(FLY.on)placeCamera(FLY.pos);};
-// any touch on the map hands control back
+$('fly-low').onclick=()=>{FLY.view='low';FLY.cam=null;FLY.alt=null;flyUi();if(FLY.on||FLY.follow)placeCamera(FLY.pos,true);};
+$('fly-high').onclick=()=>{FLY.view='high';FLY.cam=null;FLY.alt=null;flyUi();if(FLY.on||FLY.follow)placeCamera(FLY.pos,true);};
+$('fly-follow').onclick=()=>{FLY.follow=!FLY.follow;flyUi();if(FLY.follow&&PROF.pts)placeCamera(FLY.pos,true);};
+$('fly-dir').onclick=()=>{FLY.dirMode=FLY.dirMode==='route'?'fixed':'route';flyUi();if(FLY.cam&&(FLY.on||FLY.follow))placeCamera(FLY.pos,true);};
+// any touch on the map hands control back (the flight stops; in follow mode the new view is then captured, below)
 for(const ev of ['mousedown','touchstart','wheel'])map.getCanvas().addEventListener(ev,()=>{if(FLY.on)flyStop();},{passive:true});
-// tapping the chart moves the flight there
-$('profcv').addEventListener('pointerdown',e=>{if(PROF.pts){FLY.pos=PROF.pts[profIndex(e)].d;if(FLY.on)placeCamera(FLY.pos);}});
+// in follow mode, a view the viewer set by hand becomes the camera for the rest of the route
+for(const ev of ['dragend','zoomend','rotateend','pitchend'])map.on(ev,e=>{if(FLY.follow&&PROF.pts&&e.originalEvent)captureCam();});
+// a tap on the chart moves the flight there; in follow mode scrubbing carries the camera along
+$('profcv').addEventListener('pointerdown',e=>{if(PROF.pts){FLY.pos=PROF.pts[profIndex(e)].d;if(FLY.on||FLY.follow)placeCamera(FLY.pos,!FLY.on);}});
+$('profcv').addEventListener('pointermove',e=>{if(PROF.pts&&FLY.follow&&!FLY.on&&(e.buttons||e.pointerType!=='mouse')){FLY.pos=PROF.pts[profIndex(e)].d;placeCamera(FLY.pos,true);}});
 
 /* tour: the camera glides from stop to stop and pauses at each. Stops are the profile's marked points
    (in route order) or the elevation pins (in the order they were set). */

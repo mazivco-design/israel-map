@@ -62,6 +62,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #b-clear,#b-tour{white-space:nowrap}
 #flybar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.8rem}
 #flybar button{padding:3px 10px}
+#fly-note{flex-basis:100%;color:var(--muted);font-size:.74rem}
+#fly-note:empty{display:none}
 #layers{position:relative}
 #layers-n:empty{display:none}
 #layers-n{display:inline-block;min-width:1.3em;border-radius:999px;background:rgba(0,0,0,.35);font-size:.72rem;padding:0 4px}
@@ -184,6 +186,9 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
     <span class="seg" role="group" aria-label="מהירות"><button id="fly-x1" aria-pressed="true">×1</button><button id="fly-x2" aria-pressed="false">×2</button><button id="fly-x4" aria-pressed="false">×4</button></span>
     <span class="seg" role="group" aria-label="גובה מצלמה"><button id="fly-low" aria-pressed="true">קרוב</button><button id="fly-high" aria-pressed="false">מלמעלה</button></span>
     <button id="fly-tour" title="מעבר בין הנקודות שסומנו על הגרף">סיור בין הנקודות</button>
+    <button id="fly-follow" aria-pressed="false" title="גרירה על הגרף מזיזה את המצלמה לאורך המסלול">עקוב</button>
+    <button id="fly-dir" aria-pressed="false" title="האם המצלמה מסתובבת עם כיוון הדרך או שומרת על כיוון קבוע">כיוון עם הדרך</button>
+    <span id="fly-note"></span>
   </div>
 </section>
 
