@@ -10,6 +10,7 @@ function chainRoute(g){
   const d2=(a,b)=>((a[0]-b[0])*Math.cos(a[1]*Math.PI/180))**2+(a[1]-b[1])**2;
   parts.sort((a,b)=>km({type:'LineString',coordinates:b})-km({type:'LineString',coordinates:a}));
   let line=parts.shift();
+  const gaps=new Set();      // points after which the line jumps across a gap (no road there); kept by reference
   while(parts.length){
     let best=null;
     const A=line[0],B=line[line.length-1],span=d2(A,B);
@@ -23,10 +24,22 @@ function chainRoute(g){
     // pieces from neighbouring map tiles overlap a little: drop the part of the new piece that lies back along the line
     const trim=(seg,end,prev)=>{const dir=[(end[0]-prev[0])*Math.cos(end[1]*Math.PI/180),end[1]-prev[1]];let k=0;
       while(k<seg.length-1){const v=[(seg[k][0]-end[0])*Math.cos(end[1]*Math.PI/180),seg[k][1]-end[1]];if(v[0]*dir[0]+v[1]*dir[1]>0)break;k++;}return seg.slice(k);};
-    if(best.front){const q=trim(p.slice().reverse(),line[0],line[1]).reverse();line=q.concat(line);}
-    else line=line.concat(trim(p,line[line.length-1],line[line.length-2]));
+    const gap=best.d>(0.0015)**2;                    // further than ~150 m: a jump, not a continuation
+    if(best.front){const q=trim(p.slice().reverse(),line[0],line[1]).reverse();if(gap)gaps.add(q[q.length-1]);line=q.concat(line);}
+    else{if(gap)gaps.add(line[line.length-1]);line=line.concat(trim(p,line[line.length-1],line[line.length-2]));}
   }
+  line.gaps=gaps;
   return line;
+}
+/* the route itself at full detail, with distance along it, so the moving dot stays exactly on the line
+   (the profile's samples are up to a few hundred metres apart on long roads and would cut the bends) */
+function routeIndex(line){
+  const cum=[0],gaps=[];
+  for(let i=1;i<line.length;i++){
+    const d=cum[i-1]+km({type:'LineString',coordinates:[line[i-1],line[i]]});cum.push(d);
+    if(line.gaps&&line.gaps.has(line[i-1]))gaps.push([cum[i-1],d]);
+  }
+  return {pts:line,cum,gaps};
 }
 function resample(line){
   const segs=[];let tot=0;
@@ -42,8 +55,10 @@ function resample(line){
 async function openProfile(name,geom,color){
   closeProfile();
   const line=chainRoute(geom);if(line.length<2)return;
+  PROF.route=routeIndex(line);
   PROF.name=name;PROF.color=color;PROF.marks=[];
   const pts=resample(line);
+  for(const p of pts)p.gap=PROF.route.gaps.some(([a,b])=>p.d>a&&p.d<b);
   $('prof').hidden=false;$('profstats').textContent='קורא גבהים…';$('profname').textContent=name;sizeProfile();
   try{
     for(let i=0;i<pts.length;i+=150)await Promise.all(pts.slice(i,i+150).map(p=>elevationAt(p.lng,p.lat).then(z=>p.z=z).catch(()=>p.z=null)));
@@ -78,7 +93,7 @@ function drawProfile(){
   const ds=niceStep(L/6);g.textAlign='center';for(let d=0;d<=L+1e-9;d+=ds)g.fillText((ds<1?d.toFixed(1):Math.round(d))+(d===0?'':''),X(d),H-5);
   g.textAlign='left';g.fillText('ק״מ',W-mr-22,H-5);
   // area coloured by grade
-  for(let i=1;i<P.length;i++){const a=P[i-1],b=P[i];g.fillStyle=slopeColor(b.g)+'cc';
+  for(let i=1;i<P.length;i++){const a=P[i-1],b=P[i];g.fillStyle=b.gap?'rgba(140,150,150,.35)':slopeColor(b.g)+'cc';
     g.beginPath();g.moveTo(X(a.d),Y(a.z));g.lineTo(X(b.d),Y(b.z));g.lineTo(X(b.d),H-mb);g.lineTo(X(a.d),H-mb);g.closePath();g.fill();}
   g.strokeStyle='#f4f1e8';g.lineWidth=1.6;g.beginPath();P.forEach((p,i)=>i?g.lineTo(X(p.d),Y(p.z)):g.moveTo(X(p.d),Y(p.z)));g.stroke();
   // marked points

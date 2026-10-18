@@ -18,12 +18,19 @@ function flyUi(){
   $('fly-dir').textContent=FLY.dirMode==='fixed'?'כיוון קבוע':'כיוון עם הדרך';
   $('fly-note').textContent=FLY.cam?'המצלמה בזווית שקבעת. "קרוב" או "מלמעלה" מחזירים למבט הרגיל.':FLY.follow?'סובב, הטה או קרב את המפה כרצונך; מכאן המצלמה תשמור על הזווית הזאת לאורך המסלול.':'';
 }
-function routePos(d){            // interpolated point on the route at distance d (km)
+function routePos(d){            // point on the route at distance d (km): position from the full-detail line, height from the profile
   const P=PROF.pts;let lo=0,hi=P.length-1;
   while(hi-lo>1){const m=(lo+hi)>>1;if(P[m].d<d)lo=m;else hi=m;}
   const a=P[lo],b=P[hi],t=b.d>a.d?(d-a.d)/(b.d-a.d):0;
-  return {lng:a.lng+(b.lng-a.lng)*t,lat:a.lat+(b.lat-a.lat)*t,z:a.z+(b.z-a.z)*t,i:t<.5?lo:hi};
+  const out={lng:a.lng+(b.lng-a.lng)*t,lat:a.lat+(b.lat-a.lat)*t,z:a.z+(b.z-a.z)*t,i:t<.5?lo:hi};
+  const R=PROF.route;
+  if(R){let l=0,h=R.cum.length-1;while(h-l>1){const m=(l+h)>>1;if(R.cum[m]<d)l=m;else h=m;}
+    const u=R.cum[h]>R.cum[l]?(d-R.cum[l])/(R.cum[h]-R.cum[l]):0,A=R.pts[l],B=R.pts[h];
+    out.lng=A[0]+(B[0]-A[0])*u;out.lat=A[1]+(B[1]-A[1])*u;}
+  return out;
 }
+// where the route jumps across a gap (a road losing its number in a town, say), the flight skips to the far side
+function skipGap(d){const R=PROF.route;if(R)for(const [a,b] of R.gaps)if(d>a&&d<b)return b;return d;}
 function headingAt(d){           // direction of travel (deg clockwise from north) a little ahead of d
   const a=routePos(d),b=routePos(Math.min(PROF.L,d+.25));
   const dx=(b.lng-a.lng)*Math.cos(a.lat*Math.PI/180),dy=b.lat-a.lat;
@@ -33,7 +40,7 @@ function lerpAngle(a,b,t){let d=((b-a+540)%360)-180;return (a+d*t+360)%360;}
 function flyFrame(now){
   if(!FLY.on)return;
   const dt=Math.min(.25,(now-FLY.last)/1000);FLY.last=now;
-  FLY.pos+=dt*FLY_KMPS[FLY.speed]*S.ex/2;              // scaled with exaggeration a little, so tall views do not crawl
+  FLY.pos=skipGap(FLY.pos+dt*FLY_KMPS[FLY.speed]*S.ex/2);   // scaled with exaggeration a little, so tall views do not crawl
   if(FLY.pos>=PROF.L){FLY.pos=PROF.L;flyStop();placeCamera(FLY.pos);return;}
   placeCamera(FLY.pos);
   FLY.raf=requestAnimationFrame(flyFrame);
@@ -93,9 +100,11 @@ function flyStart(){
   if(FLY.pos>=PROF.L-1e-6)FLY.pos=0;
   FLY.on=true;FLY.last=performance.now();FLY.bearing=map.getBearing();FLY.alt=null;
   if(playT)setPlay(false);                                  // the sun animation and the flight do not run together
+  if(map.getLayer('road-shields'))map.setLayoutProperty('road-shields','visibility','none');   // close up they repeat every few hundred metres
   flyUi();FLY.raf=requestAnimationFrame(flyFrame);
 }
-function flyStop(){FLY.on=false;cancelAnimationFrame(FLY.raf);if(FLY.tour){clearTimeout(FLY.tour);FLY.tour=null;}flyUi();}
+function flyStop(){FLY.on=false;cancelAnimationFrame(FLY.raf);if(FLY.tour){clearTimeout(FLY.tour);FLY.tour=null;}
+  if(map.getLayer('road-shields'))map.setLayoutProperty('road-shields','visibility',S.roads?'visible':'none');flyUi();}
 $('fly-play').onclick=()=>FLY.on?flyStop():flyStart();
 for(const v of [1,2,4])$('fly-x'+v).onclick=()=>{FLY.speed=v;flyUi();};
 $('fly-low').onclick=()=>{FLY.view='low';FLY.cam=null;FLY.alt=null;flyUi();if(FLY.on||FLY.follow)placeCamera(FLY.pos,true);};

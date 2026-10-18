@@ -133,7 +133,7 @@ function buildStyle(){
       {id:'road-pick-case',type:'line',source:'roadpick',layout:{...hide,'line-join':'round','line-cap':'round'},paint:{'line-color':'#1b0c05','line-width':['interpolate',['linear'],['zoom'],6,4,12,9,15,13]}},
       {id:'road-pick',type:'line',source:'roadpick',layout:{...hide,'line-join':'round','line-cap':'round'},paint:{'line-color':['get','color'],'line-width':['interpolate',['linear'],['zoom'],6,2.2,12,5.5,15,8.5]}},
       {id:'road-shields',type:'symbol',source:'omt','source-layer':'transportation_name',layout:{...hide,
-          'symbol-placement':'line','symbol-spacing':['interpolate',['linear'],['zoom'],8,250,14,400],
+          'symbol-placement':'line','symbol-spacing':['interpolate',['linear'],['zoom'],8,250,12,450,15,1200],
           'text-field':['get','ref'],'text-font':FONTB,'text-size':11,
           'icon-image':['match',['get','class'],'motorway','shield-motorway','trunk','shield-trunk','primary','shield-primary','shield-minor'],
           'icon-text-fit':'both','icon-text-fit-padding':[1,4,1,4],
