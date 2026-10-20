@@ -91,6 +91,7 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
 .profdot{width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid #ff5fa2;box-shadow:0 0 6px rgba(0,0,0,.6)}
 #mine .chart{border:none;padding:0 4px;font-size:.95rem}
 .tk{display:inline-flex;align-items:center;gap:5px;font-size:.8rem}.tk i{width:16px;height:4px;border-radius:2px}
+#otmnote{color:var(--muted);font-size:.74rem}
 #tracknote{color:var(--muted);font-size:.74rem}
 #stypes button,#log .seg button{font-size:.8rem;padding:4px 10px}
 #mine-n:empty{display:none}
@@ -240,6 +241,7 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
         <button id="b-roads" aria-pressed="false">כבישים</button>
         <button id="b-trails" aria-pressed="false">שבילים</button>
         <button id="b-contours" aria-pressed="false" title="קווים שמחברים נקודות באותו גובה">קווי גובה</button>
+        <button id="b-otm" aria-pressed="false" title="מפת OpenTopoMap שקופה מעל, לבדיקת קווי הגובה מול מקור אחר">השוואה: OpenTopoMap</button>
         <button id="b-tracks" aria-pressed="false" title="דרכי עפר לפי רמת קושי">4×4</button>
         <button id="b-regions" aria-pressed="false" title="האזורים הגדולים: הגליל, השרון, הנגב…">אזורים</button>
         <button id="b-land" aria-pressed="false" title="מכתשים, בקעות, עמקים והרים">נוף</button>
@@ -268,6 +270,11 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
     <span class="tk"><i style="background:#ff4d4d"></i>4×4 בלבד</span>
     <span class="tk"><i style="background:#d8c9a8"></i>לא ידוע</span>
     <span id="tracknote"></span>
+  </div>
+  <div class="ctl" id="otmctl" hidden>
+    <span>שקיפות OpenTopoMap</span>
+    <input id="otmop" type="range" min="0.1" max="1" step="0.05" value="0.6" aria-label="שקיפות OpenTopoMap">
+    <span id="otmnote">קווי גובה מנתוני SRTM, כל 20 מ׳ (עבה כל 100 מ׳). צריך אינטרנט.</span>
   </div>
   <div class="ctl" id="selctl" hidden>
     <select id="addsel" aria-label="הוספה לבחירה"><option value="">הוספה לבחירה…</option></select>

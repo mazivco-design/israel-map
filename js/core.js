@@ -38,7 +38,7 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,tracks:false,contours:false,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,tracks:false,contours:false,otm:false,otmOp:.6,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
 let ROADPICK=EMPTY,ROADS=null;   // picked roads, whole (from roads.geojson, made by tools/build_roads.py)
 let REG=[],REG_BIG=[],REG_SUB=[],POIS=EMPTY,CTR=[],FOUND=EMPTY;   // REG = small regions first (they win a click), then the large ones
 /* contour lines, worked out in the browser (maplibre-contour, in a web worker) from the same elevation tiles the 3D terrain uses.
@@ -55,6 +55,9 @@ function contourTiles(){
 const fc=f=>({type:'FeatureCollection',features:f});
 const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name,small:!!f.properties.kind},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
 
+// OpenTopoMap, a topographic map made from other elevation data (SRTM): laid over the map to check the contour lines against it
+const OTM={type:'raster',tiles:['a','b','c'].map(c=>`https://${c}.tile.opentopomap.org/{z}/{x}/{y}.png`),tileSize:256,maxzoom:17,
+  attribution:'השוואה: © <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (CC-BY-SA), SRTM'};
 const SAT={type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:19,
   attribution:'לוויין: <a href="https://www.esri.com" target="_blank">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community'};
 // normal relief shading: soft light from several directions. In sun mode it is replaced by one light from the sun.
@@ -83,7 +86,7 @@ function buildStyle(){
       countries:{type:'geojson',data:fc(CTR)},countryLabels:{type:'geojson',data:labelsOf(CTR)},
       found:{type:'geojson',data:FOUND},roadpick:{type:'geojson',data:ROADPICK},tracks:{type:'vector',url:'pmtiles://'+BASE+'map/tracks.pmtiles'},pois:{type:'geojson',data:POIS},
       // satellite imagery streams from Esri, so it exists in global mode only
-      ...(S.data==='global'?{sat:SAT}:{}),
+      ...(S.data==='global'?{sat:SAT}:{}),otm:OTM,
       ...(window.mlcontour?{contours:{type:'vector',tiles:[contourTiles()],maxzoom:15,...(M.bounds?{bounds:M.bounds}:{})}}:{})},
     sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
     terrain:{source:'dem',exaggeration:S.ex},
@@ -93,6 +96,7 @@ function buildStyle(){
       ...(S.data==='global'?[{id:'satellite',type:'raster',source:'sat',layout:hide,paint:{'raster-fade-duration':150}}]:[]),
       {id:'shade',type:'hillshade',source:'demShade',paint:{...SHADE_MULTI}},
       {id:'water',type:'fill',source:'omt','source-layer':'water',paint:{'fill-color':'#2e5c7c'}},
+      {id:'otm',type:'raster',source:'otm',layout:hide,paint:{'raster-opacity':S.otmOp,'raster-fade-duration':150}},
       // contour lines: thin every step, thicker (level 1) on the round heights, which also get their number
       ...(window.mlcontour?[{id:'contours',type:'line',source:'contours','source-layer':'contours',minzoom:8,layout:{...hide,'line-join':'round'},
         paint:{'line-color':'#f6eedc','line-opacity':['match',['get','level'],1,.75,.4],
@@ -222,6 +226,7 @@ function apply(){
   ROAD_LAYERS.forEach(id=>vis(id,S.roads));
   vis('tracks-4x4',S.tracks);
   vis('contours',S.contours);vis('contour-labels',S.contours);
+  vis('otm',S.otm);if(map.getLayer('otm'))map.setPaintProperty('otm','raster-opacity',S.otmOp);
   // picked roads stand out, the others fade
   const pick=S.roads&&S.roadSel.size>0;
   if(map.getSource('roadpick'))map.getSource('roadpick').setData(ROADPICK);
@@ -272,6 +277,8 @@ $('b-roads').onclick=()=>{S.roads=!S.roads;press('b-roads',S.roads);apply();};
 $('b-trails').onclick=()=>{S.trails=!S.trails;press('b-trails',S.trails);apply();};
 $('b-contours').onclick=()=>{S.contours=!S.contours;press('b-contours',S.contours);apply();};
 $('b-contours').disabled=!window.mlcontour;
+$('b-otm').onclick=()=>{S.otm=!S.otm;press('b-otm',S.otm);$('otmctl').hidden=!S.otm;apply();};
+$('otmop').addEventListener('input',e=>{S.otmOp=+e.target.value;map.setPaintProperty('otm','raster-opacity',S.otmOp);refreshTerrain();});
 $('b-tracks').onclick=()=>{S.tracks=!S.tracks;press('b-tracks',S.tracks);$('trackctl').hidden=!S.tracks;
   $('tracknote').textContent=map.getZoom()<9?'התקרבו כדי לראות את הדרכים':'';apply();};
 map.on('zoomend',()=>{if(S.tracks)$('tracknote').textContent=map.getZoom()<9?'התקרבו כדי לראות את הדרכים':'';});
