@@ -239,6 +239,7 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
         <button id="b-lbl" aria-pressed="true">שמות</button>
         <button id="b-roads" aria-pressed="false">כבישים</button>
         <button id="b-trails" aria-pressed="false">שבילים</button>
+        <button id="b-contours" aria-pressed="false" title="קווים שמחברים נקודות באותו גובה">קווי גובה</button>
         <button id="b-tracks" aria-pressed="false" title="דרכי עפר לפי רמת קושי">4×4</button>
         <button id="b-regions" aria-pressed="false" title="האזורים הגדולים: הגליל, השרון, הנגב…">אזורים</button>
         <button id="b-land" aria-pressed="false" title="מכתשים, בקעות, עמקים והרים">נוף</button>
@@ -280,6 +281,7 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
 
 <script src="lib/maplibre-gl.js"></script>
 <script src="lib/pmtiles.js"></script>
+<script src="lib/maplibre-contour.js"></script>
 <script src="js/core.js"></script>
 <script src="js/areas.js"></script>
 <script src="js/sun.js"></script>

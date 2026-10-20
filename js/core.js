@@ -29,7 +29,7 @@ const NAME=['coalesce',['get','name:he'],['get','name']];
 const STOPS=[[-430,'#5c8054'],[-200,'#76965c'],[0,'#588a5c'],[150,'#8caa68'],[400,'#cdc482'],[700,'#c6a066'],[1000,'#aa764e'],[1400,'#8c6048'],[1900,'#a08c80'],[2400,'#cdc6c0'],[2800,'#f8f7f4']];
 $('ramp').style.background='linear-gradient(to right,'+STOPS.map(([z,c])=>`${c} ${((z+430)/3230*100).toFixed(1)}%`).join(',')+')';
 
-// libraries are kept in lib/ (MapLibre GL 5.9.0, mapbox-gl-rtl-text 0.3.0, PMTiles 4.4.1) so the site does not depend on a CDN
+// libraries are kept in lib/ (MapLibre GL 5.9.0, mapbox-gl-rtl-text 0.3.0, PMTiles 4.4.1, maplibre-contour 0.1.0) so the site does not depend on a CDN
 maplibregl.setRTLTextPlugin(new URL('lib/mapbox-gl-rtl-text.js',location.href).href,true).catch(()=>{});
 
 const small=innerWidth<600;
@@ -38,9 +38,20 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,tracks:false,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,tracks:false,contours:false,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
 let ROADPICK=EMPTY,ROADS=null;   // picked roads, whole (from roads.geojson, made by tools/build_roads.py)
 let REG=[],REG_BIG=[],REG_SUB=[],POIS=EMPTY,CTR=[],FOUND=EMPTY;   // REG = small regions first (they win a click), then the large ones
+/* contour lines, worked out in the browser (maplibre-contour, in a web worker) from the same elevation tiles the 3D terrain uses.
+   Thresholds per zoom: [line every N m, thicker labelled line every M m]. One generator per data mode, made on first use. */
+const CONTOUR_STEPS={8:[100,500],10:[50,200],12:[20,100],13:[10,50]};
+const DEMSRC={};
+function contourTiles(){
+  if(!window.mlcontour)return null;
+  const M=SRC[S.data];
+  if(!DEMSRC[S.data]){DEMSRC[S.data]=new mlcontour.DemSource({url:M.dem,encoding:'terrarium',maxzoom:M.demMax,worker:true,cacheSize:100,timeoutMs:15000});
+    DEMSRC[S.data].setupMaplibre(maplibregl);}
+  return DEMSRC[S.data].contourProtocolUrl({thresholds:CONTOUR_STEPS,elevationKey:'ele',levelKey:'level',contourLayer:'contours',buffer:1});
+}
 const fc=f=>({type:'FeatureCollection',features:f});
 const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name,small:!!f.properties.kind},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
 
@@ -72,7 +83,8 @@ function buildStyle(){
       countries:{type:'geojson',data:fc(CTR)},countryLabels:{type:'geojson',data:labelsOf(CTR)},
       found:{type:'geojson',data:FOUND},roadpick:{type:'geojson',data:ROADPICK},tracks:{type:'vector',url:'pmtiles://'+BASE+'map/tracks.pmtiles'},pois:{type:'geojson',data:POIS},
       // satellite imagery streams from Esri, so it exists in global mode only
-      ...(S.data==='global'?{sat:SAT}:{})},
+      ...(S.data==='global'?{sat:SAT}:{}),
+      ...(window.mlcontour?{contours:{type:'vector',tiles:[contourTiles()],maxzoom:15,...(M.bounds?{bounds:M.bounds}:{})}}:{})},
     sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
     terrain:{source:'dem',exaggeration:S.ex},
     layers:[
@@ -81,6 +93,10 @@ function buildStyle(){
       ...(S.data==='global'?[{id:'satellite',type:'raster',source:'sat',layout:hide,paint:{'raster-fade-duration':150}}]:[]),
       {id:'shade',type:'hillshade',source:'demShade',paint:{...SHADE_MULTI}},
       {id:'water',type:'fill',source:'omt','source-layer':'water',paint:{'fill-color':'#2e5c7c'}},
+      // contour lines: thin every step, thicker (level 1) on the round heights, which also get their number
+      ...(window.mlcontour?[{id:'contours',type:'line',source:'contours','source-layer':'contours',minzoom:8,layout:{...hide,'line-join':'round'},
+        paint:{'line-color':'#f6eedc','line-opacity':['match',['get','level'],1,.75,.4],
+          'line-width':['interpolate',['linear'],['zoom'],8,['match',['get','level'],1,.9,.4],14,['match',['get','level'],1,1.6,.8]]}}]:[]),
       {id:'river',type:'line',source:'omt','source-layer':'waterway',minzoom:9,filter:['in',['get','class'],['literal',['river','stream']]],
         paint:{'line-color':'#4f8fb3','line-width':['interpolate',['linear'],['zoom'],9,.4,14,1.6],'line-opacity':.7}},
       {id:'border',type:'line',source:'omt','source-layer':'boundary',filter:['==',['get','admin_level'],2],
@@ -123,6 +139,9 @@ function buildStyle(){
         filter:['in',['get','class'],['literal',['path','track']]],layout:{...hide,'line-join':'round'},
         paint:{'line-color':['match',['get','class'],'track','#e8d6a8','#ffd27a'],'line-opacity':.85,
           'line-width':['interpolate',['linear'],['zoom'],10,.8,13,2,16,4.5],'line-dasharray':[2,1.5]}},
+      ...(window.mlcontour?[{id:'contour-labels',type:'symbol',source:'contours','source-layer':'contours',minzoom:9.5,filter:['>',['get','level'],0],
+        layout:{...hide,'symbol-placement':'line','symbol-spacing':300,'text-field':['to-string',['get','ele']],'text-font':FONT,'text-size':10,'text-max-angle':25},
+        paint:{'text-color':'#fff6e0','text-halo-color':'#2a2016','text-halo-width':1.3}}]:[]),
       {id:'found-line',type:'line',source:'found',filter:['!=',['geometry-type'],'Point'],layout:{'line-join':'round','line-cap':'round'},
         paint:{'line-color':['coalesce',['get','color'],'#ff8a3d'],'line-width':['interpolate',['linear'],['zoom'],6,2.5,13,5],'line-blur':.4}},
       {id:'found-point',type:'circle',source:'found',filter:['==',['geometry-type'],'Point'],
@@ -202,6 +221,7 @@ function apply(){
   vis('trails-paths',S.trails);
   ROAD_LAYERS.forEach(id=>vis(id,S.roads));
   vis('tracks-4x4',S.tracks);
+  vis('contours',S.contours);vis('contour-labels',S.contours);
   // picked roads stand out, the others fade
   const pick=S.roads&&S.roadSel.size>0;
   if(map.getSource('roadpick'))map.getSource('roadpick').setData(ROADPICK);
@@ -250,6 +270,8 @@ $('b-sat').onclick=()=>{S.satellite=!S.satellite;press('b-sat',S.satellite);appl
 $('b-lbl').onclick=()=>{S.labels=!S.labels;press('b-lbl',S.labels);apply();};
 $('b-roads').onclick=()=>{S.roads=!S.roads;press('b-roads',S.roads);apply();};
 $('b-trails').onclick=()=>{S.trails=!S.trails;press('b-trails',S.trails);apply();};
+$('b-contours').onclick=()=>{S.contours=!S.contours;press('b-contours',S.contours);apply();};
+$('b-contours').disabled=!window.mlcontour;
 $('b-tracks').onclick=()=>{S.tracks=!S.tracks;press('b-tracks',S.tracks);$('trackctl').hidden=!S.tracks;
   $('tracknote').textContent=map.getZoom()<9?'התקרבו כדי לראות את הדרכים':'';apply();};
 map.on('zoomend',()=>{if(S.tracks)$('tracknote').textContent=map.getZoom()<9?'התקרבו כדי לראות את הדרכים':'';});
