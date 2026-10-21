@@ -91,6 +91,8 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
 .profdot{width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid #ff5fa2;box-shadow:0 0 6px rgba(0,0,0,.6)}
 #mine .chart{border:none;padding:0 4px;font-size:.95rem}
 .tk{display:inline-flex;align-items:center;gap:5px;font-size:.8rem}.tk i{width:16px;height:4px;border-radius:2px}
+#chv{width:5.5em;font:inherit;padding:.25em .4em;border-radius:8px;border:1px solid #556;background:#11181a;color:#fff;text-align:center}
+#chnote{color:var(--muted);font-size:.74rem}
 #otmnote{color:var(--muted);font-size:.74rem}
 #tracknote{color:var(--muted);font-size:.74rem}
 #stypes button,#log .seg button{font-size:.8rem;padding:4px 10px}
@@ -238,6 +240,7 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
       <button id="b-layers" aria-expanded="false" aria-controls="layermenu">שכבות <span id="layers-n"></span> ▾</button>
       <div id="layermenu" class="card" hidden>
         <button id="b-lbl" aria-pressed="true">שמות</button>
+        <button id="b-net" aria-pressed="true" title="הקווים הדקים של כל הדרכים ברקע">רשת דרכים</button>
         <button id="b-roads" aria-pressed="false">כבישים</button>
         <button id="b-trails" aria-pressed="false">שבילים</button>
         <button id="b-contours" aria-pressed="false" title="קווים שמחברים נקודות באותו גובה">קווי גובה</button>
@@ -270,6 +273,14 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
     <span class="tk"><i style="background:#ff4d4d"></i>4×4 בלבד</span>
     <span class="tk"><i style="background:#d8c9a8"></i>לא ידוע</span>
     <span id="tracknote"></span>
+  </div>
+  <div class="ctl" id="contctl" hidden>
+    <span>הדגשת קו גובה</span>
+    <button id="ch-minus" class="step" aria-label="קו נמוך יותר">−</button>
+    <input id="chv" type="number" inputmode="numeric" step="10" placeholder="מ׳" aria-label="גובה הקו המודגש במטרים">
+    <button id="ch-plus" class="step" aria-label="קו גבוה יותר">+</button>
+    <button id="ch-clear">בלי</button>
+    <span id="chnote">רשום גובה במטרים, והקו שלו יודגש בכל המפה</span>
   </div>
   <div class="ctl" id="otmctl" hidden>
     <span>שקיפות OpenTopoMap</span>

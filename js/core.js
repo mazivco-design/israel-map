@@ -38,7 +38,7 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,tracks:false,contours:false,otm:false,otmOp:.6,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,tracks:false,contours:false,contourHi:null,net:true,otm:false,otmOp:.6,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
 let ROADPICK=EMPTY,ROADS=null;   // picked roads, whole (from roads.geojson, made by tools/build_roads.py)
 let REG=[],REG_BIG=[],REG_SUB=[],POIS=EMPTY,CTR=[],FOUND=EMPTY;   // REG = small regions first (they win a click), then the large ones
 /* contour lines, worked out in the browser (maplibre-contour, in a web worker) from the same elevation tiles the 3D terrain uses.
@@ -51,6 +51,14 @@ function contourTiles(){
   if(!DEMSRC[S.data]){DEMSRC[S.data]=new mlcontour.DemSource({url:M.dem,encoding:'terrarium',maxzoom:M.demMax,worker:true,cacheSize:100,timeoutMs:15000});
     DEMSRC[S.data].setupMaplibre(maplibregl);}
   return DEMSRC[S.data].contourProtocolUrl({thresholds:CONTOUR_STEPS,elevationKey:'ele',levelKey:'level',contourLayer:'contours',buffer:1});
+}
+/* the one height the viewer picked to stand out: a second set of lines every |H| m, filtered to H itself */
+function contourHiTiles(){
+  if(!window.mlcontour)return null;
+  contourTiles();
+  const h=Math.abs(S.contourHi||1000)||1000,th={};
+  for(let z=5;z<=15;z++)th[z]=[h];
+  return DEMSRC[S.data].contourProtocolUrl({thresholds:th,elevationKey:'ele',levelKey:'level',contourLayer:'contours',buffer:1});
 }
 const fc=f=>({type:'FeatureCollection',features:f});
 const labelsOf=list=>fc(list.map(f=>({type:'Feature',properties:{name:f.properties.name,small:!!f.properties.kind},geometry:{type:'Point',coordinates:[f.properties.lx,f.properties.ly]}})));
@@ -87,7 +95,8 @@ function buildStyle(){
       found:{type:'geojson',data:FOUND},roadpick:{type:'geojson',data:ROADPICK},tracks:{type:'vector',url:'pmtiles://'+BASE+'map/tracks.pmtiles'},pois:{type:'geojson',data:POIS},
       // satellite imagery streams from Esri, so it exists in global mode only
       ...(S.data==='global'?{sat:SAT}:{}),otm:OTM,
-      ...(window.mlcontour?{contours:{type:'vector',tiles:[contourTiles()],maxzoom:15,...(M.bounds?{bounds:M.bounds}:{})}}:{})},
+      ...(window.mlcontour?{contours:{type:'vector',tiles:[contourTiles()],maxzoom:15,...(M.bounds?{bounds:M.bounds}:{})},
+        contourHi:{type:'vector',tiles:[contourHiTiles()],maxzoom:15,...(M.bounds?{bounds:M.bounds}:{})}}:{})},
     sky:{'sky-color':'#0f1716','horizon-color':'#26302d','fog-color':'#0f1716','sky-horizon-blend':.6,'horizon-fog-blend':.6,'fog-ground-blend':.75,'atmosphere-blend':0},
     terrain:{source:'dem',exaggeration:S.ex},
     layers:[
@@ -99,8 +108,9 @@ function buildStyle(){
       {id:'otm',type:'raster',source:'otm',layout:hide,paint:{'raster-opacity':S.otmOp,'raster-fade-duration':150}},
       // contour lines: thin every step, thicker (level 1) on the round heights, which also get their number
       ...(window.mlcontour?[{id:'contours',type:'line',source:'contours','source-layer':'contours',minzoom:8,layout:{...hide,'line-join':'round'},
-        paint:{'line-color':'#f6eedc','line-opacity':['match',['get','level'],1,.75,.4],
-          'line-width':['interpolate',['linear'],['zoom'],8,['match',['get','level'],1,.9,.4],14,['match',['get','level'],1,1.6,.8]]}}]:[]),
+        paint:{'line-color':'#f6eedc','line-opacity':.5,'line-width':['interpolate',['linear'],['zoom'],8,.5,14,1]}},
+        {id:'contour-hi',type:'line',source:'contourHi','source-layer':'contours',minzoom:5,layout:{...hide,'line-join':'round'},filter:['==',['get','ele'],S.contourHi??-99999],
+          paint:{'line-color':'#ffd23f','line-width':['interpolate',['linear'],['zoom'],6,1.6,12,3,15,4.5]}}]:[]),
       {id:'river',type:'line',source:'omt','source-layer':'waterway',minzoom:9,filter:['in',['get','class'],['literal',['river','stream']]],
         paint:{'line-color':'#4f8fb3','line-width':['interpolate',['linear'],['zoom'],9,.4,14,1.6],'line-opacity':.7}},
       {id:'border',type:'line',source:'omt','source-layer':'boundary',filter:['==',['get','admin_level'],2],
@@ -145,7 +155,10 @@ function buildStyle(){
           'line-width':['interpolate',['linear'],['zoom'],10,.8,13,2,16,4.5],'line-dasharray':[2,1.5]}},
       ...(window.mlcontour?[{id:'contour-labels',type:'symbol',source:'contours','source-layer':'contours',minzoom:9.5,filter:['>',['get','level'],0],
         layout:{...hide,'symbol-placement':'line','symbol-spacing':300,'text-field':['to-string',['get','ele']],'text-font':FONT,'text-size':10,'text-max-angle':25},
-        paint:{'text-color':'#fff6e0','text-halo-color':'#2a2016','text-halo-width':1.3}}]:[]),
+        paint:{'text-color':'#fff6e0','text-halo-color':'#2a2016','text-halo-width':1.3}},
+        {id:'contour-hi-labels',type:'symbol',source:'contourHi','source-layer':'contours',minzoom:8,filter:['==',['get','ele'],S.contourHi??-99999],
+          layout:{...hide,'symbol-placement':'line','symbol-spacing':350,'text-field':['concat',['to-string',['get','ele']],' מ׳'],'text-font':FONTB,'text-size':12,'text-max-angle':25},
+          paint:{'text-color':'#ffe680','text-halo-color':'#231a00','text-halo-width':1.6}}]:[]),
       {id:'found-line',type:'line',source:'found',filter:['!=',['geometry-type'],'Point'],layout:{'line-join':'round','line-cap':'round'},
         paint:{'line-color':['coalesce',['get','color'],'#ff8a3d'],'line-width':['interpolate',['linear'],['zoom'],6,2.5,13,5],'line-blur':.4}},
       {id:'found-point',type:'circle',source:'found',filter:['==',['geometry-type'],'Point'],
@@ -226,6 +239,8 @@ function apply(){
   ROAD_LAYERS.forEach(id=>vis(id,S.roads));
   vis('tracks-4x4',S.tracks);
   vis('contours',S.contours);vis('contour-labels',S.contours);
+  const hi=S.contours&&S.contourHi!==null;vis('contour-hi',hi);vis('contour-hi-labels',hi);
+  vis('roads-major',S.net);vis('roads-minor',S.net);
   vis('otm',S.otm);if(map.getLayer('otm'))map.setPaintProperty('otm','raster-opacity',S.otmOp);
   // picked roads stand out, the others fade
   const pick=S.roads&&S.roadSel.size>0;
@@ -275,7 +290,21 @@ $('b-sat').onclick=()=>{S.satellite=!S.satellite;press('b-sat',S.satellite);appl
 $('b-lbl').onclick=()=>{S.labels=!S.labels;press('b-lbl',S.labels);apply();};
 $('b-roads').onclick=()=>{S.roads=!S.roads;press('b-roads',S.roads);apply();};
 $('b-trails').onclick=()=>{S.trails=!S.trails;press('b-trails',S.trails);apply();};
-$('b-contours').onclick=()=>{S.contours=!S.contours;press('b-contours',S.contours);apply();};
+$('b-contours').onclick=()=>{S.contours=!S.contours;press('b-contours',S.contours);$('contctl').hidden=!S.contours;apply();};
+$('b-net').onclick=()=>{S.net=!S.net;press('b-net',S.net);apply();};
+/* pick the height whose line stands out */
+function setContourHi(v){
+  v=(v===null||v===''||isNaN(+v))?null:Math.round(+v/10)*10;
+  S.contourHi=v;$('chv').value=v===null?'':v;
+  if(map.getSource('contourHi')){
+    if(v!==null)map.getSource('contourHi').setTiles([contourHiTiles()]);
+    const f=['==',['get','ele'],v??-99999];map.setFilter('contour-hi',f);map.setFilter('contour-hi-labels',f);}
+  apply();
+}
+$('chv').addEventListener('change',e=>setContourHi(e.target.value));
+$('ch-minus').onclick=()=>setContourHi((S.contourHi??260)-10);
+$('ch-plus').onclick=()=>setContourHi((S.contourHi??240)+10);
+$('ch-clear').onclick=()=>setContourHi(null);
 $('b-contours').disabled=!window.mlcontour;
 $('b-otm').onclick=()=>{S.otm=!S.otm;press('b-otm',S.otm);$('otmctl').hidden=!S.otm;apply();};
 $('otmop').addEventListener('input',e=>{S.otmOp=+e.target.value;map.setPaintProperty('otm','raster-opacity',S.otmOp);refreshTerrain();});
