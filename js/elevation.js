@@ -69,6 +69,7 @@ function roadAt(pt){
   return f?String(f.properties.ref):null;
 }
 map.on('click',e=>{if(!results.hidden){results.hidden=true;return;}
+  if(typeof histAt==='function'&&histAt(e.point))return;
   const ref=roadAt(e.point);
   if(ref){toggleRoad(ref,false);return;}
   if(S.regions||S.land||S.countries){toggleSel(areaAt(e.lngLat),false);return;}

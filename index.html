@@ -137,6 +137,31 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
 .fchip button{border:none;padding:0 5px;font-size:.95rem;line-height:1;color:var(--muted)}
 #results button.on{background:rgba(255,138,61,.16)}
 #results button.on .rn::after{content:" ✓";color:#ff8a3d}
+#hist{position:fixed;left:12px;right:12px;max-width:860px;margin-inline:auto;padding:8px 12px 6px;z-index:3;display:flex;flex-direction:column;gap:6px;max-height:46vh}
+#hist header{display:flex;align-items:center;gap:6px}
+#hist-strip{flex:1;display:flex;gap:4px;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:none;padding:2px}
+#hist-strip::-webkit-scrollbar{display:none}
+#hist-strip button{flex:none;display:flex;flex-direction:column;align-items:center;line-height:1.15;padding:4px 10px;border-radius:10px;font-size:.82rem}
+#hist-strip button small{font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums}
+#hist-strip button[aria-selected=true]{background:var(--accent);color:#1b1607;border-color:var(--accent);font-weight:700}
+#hist-strip button[aria-selected=true] small{color:#3a2c08}
+#hist-range{width:100%;direction:rtl}
+#hist-body{overflow-y:auto;min-height:0}
+#hist-name{margin:0;font-family:var(--display);font-weight:400;font-size:1.25rem;color:var(--accent)}
+#hist-years{font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums}
+#hist-ruler{font-size:.86rem;font-weight:700;margin-top:2px}
+#hist-text{margin:4px 0;font-size:.88rem;line-height:1.5}
+#hist-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.78rem}
+#hist-legend span{display:inline-flex;align-items:center;gap:5px}
+#hist-legend i{width:12px;height:12px;border-radius:3px;flex:none}
+#hist-legend i.approx{background:transparent!important;border:2px dashed currentColor}
+#hist.folded #hist-body,#hist.folded #hist-credit{display:none}
+#hist-credit{margin:0;color:var(--muted);font-size:.68rem}
+.hist-pop .maplibregl-popup-content{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-family:var(--body);direction:rtl;max-width:260px}
+.hist-pop .maplibregl-popup-content b{font-size:.95rem;color:var(--accent)}
+.hist-pop .maplibregl-popup-content p{margin:3px 0 0;font-size:.84rem;line-height:1.45}
+.hist-pop .maplibregl-popup-tip{border-top-color:var(--panel);border-bottom-color:var(--panel)}
+.hist-pop .maplibregl-popup-close-button{color:var(--muted);font-size:18px;left:2px;right:auto}
 @media (max-width:560px){#sunt{width:130px}#title h1{font-size:1.15rem}#title p{display:none}#title{max-width:calc(55vw - 18px)}input[type=range]{width:90px}#panel{gap:8px 10px;padding:8px 10px}#log{max-height:36%}}
 </style>
 </head>
@@ -195,6 +220,24 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
   </div>
 </section>
 
+<section id="hist" class="card" hidden aria-label="ציר זמן היסטורי">
+  <header>
+    <button id="hist-prev" class="step" aria-label="תקופה קודמת">›</button>
+    <div id="hist-strip" role="tablist"></div>
+    <button id="hist-next" class="step" aria-label="תקופה הבאה">‹</button>
+    <button id="hist-fold" class="step" aria-label="הסתרת ההסבר" aria-expanded="true">▾</button>
+    <button id="hist-x" class="step" aria-label="סגירת ציר הזמן">✕</button>
+  </header>
+  <input id="hist-range" type="range" min="0" max="0" step="1" value="0" aria-label="גלילה על ציר הזמן">
+  <div id="hist-body">
+    <h3 id="hist-name"></h3>
+    <div id="hist-years"></div>
+    <div id="hist-ruler"></div>
+    <p id="hist-text"></p>
+    <div id="hist-legend"></div>
+  </div>
+  <p id="hist-credit"></p>
+</section>
 <div id="help" hidden>
   <div class="card" role="dialog" aria-label="איך משתמשים">
     <h2>איך משתמשים במפה</h2>
@@ -211,6 +254,8 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
     <p>כל מה שנבחר מרוכז ב"הבחירות שלי". ליד שביל או כביש יש 📈 שפותח גרף גובה ושיפוע; נגיעה בגרף מסמנת נקודה על המסלול.</p>
     <h3>שכבות</h3>
     <p>תחת "שכבות": שמות, כבישים, שבילים, דרכי 4×4 לפי קושי, אזורים ונוף (נגיעה באזור בוחרת אותו), מדינות, תמונת לוויין (במצב "עולמי") ושמש וירח, שמראה צללים ואור ירח לאורך יממה בארבעה תאריכים.</p>
+    <h3>היסטוריה</h3>
+    <p>"היסטוריה" בתפריט השכבות פותח ציר זמן מכנען ועד העות'מאנים. גוללים או לוחצים על תקופה ורואים מי שלט, את הגבולות (קו מקווקו = גבול משוער) ואתרים מאותה תקופה. נגיעה באתר מציגה הסבר קצר.</p>
     <h3>מקומי ועולמי</h3>
     <p>"מקומי" עובד מהאתר עצמו, בלי שירות חיצוני, באזור ישראל. "עולמי" מביא מפה וגבהים לכל העולם משירותים חיצוניים.</p>
     <button class="close" id="help-x">סגירה</button>
@@ -250,6 +295,7 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
         <button id="b-land" aria-pressed="false" title="מכתשים, בקעות, עמקים והרים">נוף</button>
         <button id="b-countries" aria-pressed="false">מדינות</button>
         <button id="b-sat" aria-pressed="false" title="תמונת לוויין (במצב עולמי)">לוויין</button>
+        <button id="b-hist" aria-pressed="false" title="ציר זמן: מי שלט בארץ, הגבולות והאתרים בכל תקופה">היסטוריה</button>
         <button id="b-sun" aria-pressed="false" title="יום ולילה: צללי השמש ואור הירח">שמש וירח</button>
       </div>
     </span>
@@ -307,6 +353,7 @@ button[aria-pressed=true] #layers-n{background:rgba(0,0,0,.18)}
 <script src="js/elevation.js"></script>
 <script src="js/profile.js"></script>
 <script src="js/flight.js"></script>
+<script src="js/history.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

@@ -38,8 +38,9 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
 
 /* ---------- everything the viewer has switched on lives here; the style is rebuilt from it ---------- */
-const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,tracks:false,contours:false,contourHi:null,net:true,otm:false,otmOp:.6,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
+const S={data:store.get('dataMode')==='global'?'global':'local',color:'hyp',ex:2,labels:true,roads:false,trails:false,tracks:false,contours:false,hist:false,contourHi:null,net:true,otm:false,otmOp:.6,roadSel:new Set(),satellite:false,land:false,stype:'place',sun:false,sunI:0,sunDate:'',regions:false,countries:false,sel:new Set()};
 let ROADPICK=EMPTY,ROADS=null;   // picked roads, whole (from roads.geojson, made by tools/build_roads.py)
+let HIST_A=EMPTY,HIST_L=EMPTY,HIST_S=EMPTY,HIST_B=EMPTY;   // history timeline: areas, their labels, sites, extra lines (js/history.js)
 let REG=[],REG_BIG=[],REG_SUB=[],POIS=EMPTY,CTR=[],FOUND=EMPTY;   // REG = small regions first (they win a click), then the large ones
 /* contour lines, worked out in the browser (maplibre-contour, in a web worker) from the same elevation tiles the 3D terrain uses.
    Thresholds per zoom: [line every N m, thicker labelled line every M m]. One generator per data mode, made on first use. */
@@ -92,7 +93,7 @@ function buildStyle(){
     sources:{omt:M.vector,dem:{...dem},demShade:{...dem},
       regions:{type:'geojson',data:fc(REG)},regionLabels:{type:'geojson',data:labelsOf(REG)},
       countries:{type:'geojson',data:fc(CTR)},countryLabels:{type:'geojson',data:labelsOf(CTR)},
-      found:{type:'geojson',data:FOUND},roadpick:{type:'geojson',data:ROADPICK},tracks:{type:'vector',url:'pmtiles://'+BASE+'map/tracks.pmtiles'},pois:{type:'geojson',data:POIS},
+      found:{type:'geojson',data:FOUND},histA:{type:'geojson',data:HIST_A},histL:{type:'geojson',data:HIST_L},histS:{type:'geojson',data:HIST_S},histB:{type:'geojson',data:HIST_B},roadpick:{type:'geojson',data:ROADPICK},tracks:{type:'vector',url:'pmtiles://'+BASE+'map/tracks.pmtiles'},pois:{type:'geojson',data:POIS},
       // satellite imagery streams from Esri, so it exists in global mode only
       ...(S.data==='global'?{sat:SAT}:{}),otm:OTM,
       ...(window.mlcontour?{contours:{type:'vector',tiles:[contourTiles()],maxzoom:15,...(M.bounds?{bounds:M.bounds}:{})},
@@ -123,6 +124,11 @@ function buildStyle(){
         paint:{'line-color':'#ffd166','line-width':['interpolate',['linear'],['zoom'],2,1.5,8,4]}},
       {id:'region-dim',type:'fill',source:'regions',layout:hide,paint:{'fill-color':'#05080a','fill-opacity':0}},
       {id:'region-sel',type:'fill',source:'regions',layout:hide,paint:{'fill-color':'#f3c45a','fill-opacity':.32}},
+      // history timeline: who ruled each area in the chosen period (approximate borders dashed)
+      {id:'hist-fill',type:'fill',source:'histA',layout:hide,paint:{'fill-color':['get','color'],'fill-opacity':.28}},
+      {id:'hist-line',type:'line',source:'histA',filter:['!',['get','approx']],layout:{...hide,'line-join':'round'},paint:{'line-color':['get','color'],'line-width':['interpolate',['linear'],['zoom'],6,1.6,11,3]}},
+      {id:'hist-line-approx',type:'line',source:'histA',filter:['get','approx'],layout:{...hide,'line-join':'round'},paint:{'line-color':['get','color'],'line-width':['interpolate',['linear'],['zoom'],6,1.6,11,3],'line-dasharray':[3,2]}},
+      {id:'hist-border',type:'line',source:'histB',layout:{...hide},paint:{'line-color':'#fff2c8','line-width':2.5}},
       {id:'region-lines',type:'line',source:'regions',filter:['!',['has','kind']],layout:{...hide,'line-join':'round'},
         paint:{'line-color':'#f3d48a','line-opacity':.75,'line-width':['interpolate',['linear'],['zoom'],6,.8,11,2],'line-dasharray':[4,2]}},
       {id:'region-sel-line',type:'line',source:'regions',layout:{...hide,'line-join':'round'},
@@ -206,6 +212,11 @@ function buildStyle(){
       {id:'poi-names',type:'symbol',source:'pois',minzoom:10,
         layout:{'text-field':['get','name'],'text-font':FONTB,'text-size':13,'text-anchor':'bottom','text-offset':[0,-.6]},
         paint:{'text-color':'#ffd3e8','text-halo-color':'#1b0c12','text-halo-width':1.5}},
+      {id:'hist-names',type:'symbol',source:'histL',layout:{...hide,'text-field':['get','name'],'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],6,12,10,16],'text-max-width':9,'text-allow-overlap':false},
+        paint:{'text-color':['get','color'],'text-halo-color':'#0d0f10','text-halo-width':1.8}},
+      {id:'hist-site',type:'circle',source:'histS',layout:hide,paint:{'circle-radius':['interpolate',['linear'],['zoom'],6,4.5,12,7],'circle-color':'#fff4d6','circle-stroke-color':'#3a2410','circle-stroke-width':2}},
+      {id:'hist-site-names',type:'symbol',source:'histS',layout:{...hide,'text-field':['get','n'],'text-font':FONTB,'text-size':12.5,'text-anchor':'bottom','text-offset':[0,-.7],'text-allow-overlap':false},
+        paint:{'text-color':'#fff4d6','text-halo-color':'#2a1a08','text-halo-width':1.6}},
       {id:'region-names',type:'symbol',source:'regionLabels',maxzoom:11,filter:['!',['get','small']],
         layout:{...hide,'text-field':['get','name'],'text-font':FONTB,'text-size':['interpolate',['linear'],['zoom'],6,12,10,17],'text-letter-spacing':.12},
         paint:{'text-color':'#f3d48a','text-halo-color':'#15120a','text-halo-width':1.6,'text-opacity':.95}}
@@ -234,10 +245,12 @@ function apply(){
   vis('relief',S.color==='hyp'&&!sat);
   $('legend').hidden=S.color!=='hyp'||sat;
   map.setPaintProperty('bg','background-color',S.color==='hyp'?'#4a4d4f':'#4d5053');
-  LABEL_LAYERS.forEach(id=>vis(id,S.labels));
+  // modern town names would mix with the ancient sites: hidden while the history timeline is open
+  LABEL_LAYERS.forEach(id=>vis(id,S.labels&&!(S.hist&&id.startsWith('places-'))));
   vis('trails-paths',S.trails);
   ROAD_LAYERS.forEach(id=>vis(id,S.roads));
   vis('tracks-4x4',S.tracks);
+  ['hist-fill','hist-line','hist-line-approx','hist-border','hist-names','hist-site','hist-site-names'].forEach(id=>vis(id,S.hist));
   vis('contours',S.contours);vis('contour-labels',S.contours);
   const hi=S.contours&&S.contourHi!==null;vis('contour-hi',hi);vis('contour-hi-labels',hi);
   vis('roads-major',S.net);vis('roads-minor',S.net);
